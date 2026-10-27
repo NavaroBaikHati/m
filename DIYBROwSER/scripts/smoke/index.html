@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Uji Smoke Tahap 1</title>
+    <style>
+      /* Penanda sudut: dipakai untuk memastikan webview tab mengisi area di
+         bawah chrome dengan tepat (bukan 0x0 atau menumpuk di kiri atas). */
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        background: linear-gradient(160deg, #0b1b3a 0%, #143a6b 55%, #0b1b3a 100%);
+        color: #f2f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .penanda {
+        position: fixed;
+        width: 70px;
+        height: 70px;
+        border: 6px solid #ffd166;
+      }
+      .kiri-atas {
+        top: 0;
+        left: 0;
+        border-right: 0;
+        border-bottom: 0;
+      }
+      .kanan-atas {
+        top: 0;
+        right: 0;
+        border-left: 0;
+        border-bottom: 0;
+      }
+      .kiri-bawah {
+        bottom: 0;
+        left: 0;
+        border-right: 0;
+        border-top: 0;
+      }
+      .kanan-bawah {
+        bottom: 0;
+        right: 0;
+        border-left: 0;
+        border-top: 0;
+      }
+      main {
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+      }
+      p {
+        margin: 4px 0;
+        color: #cfe0f5;
+      }
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .tautan {
+        margin-top: 20px;
+      }
+      .tautan a {
+        display: inline-block;
+        margin: 0 6px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        background: #ffd166;
+        color: #0b1b3a;
+        font-weight: 600;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="penanda kiri-atas"></div>
+    <div class="penanda kanan-atas"></div>
+    <div class="penanda kiri-bawah"></div>
+    <div class="penanda kanan-bawah"></div>
+
+    <main>
+      <h1>Uji smoke Tahap 1</h1>
+      <p>Halaman ini dimuat di dalam webview tab, di bawah chrome browser.</p>
+      <p>Empat penanda kuning harus menempel di setiap sudut area ini.</p>
+      <p class="tautan">
+        <a href="/halaman-kedua.html" id="tautan-kedua">Buka halaman kedua</a>
+        <a href="https://example.com/">Keluar ke example.com</a>
+      </p>
+      <p><small><code>scripts/smoke/index.html</code></small></p>
+    </main>
+  </body>
+</html>
