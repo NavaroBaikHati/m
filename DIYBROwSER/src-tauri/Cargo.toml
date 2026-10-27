@@ -1,0 +1,28 @@
+[package]
+name = "diy-browser"
+description = "Cangkang browser DIY: window Tauri, tab manager berbasis child webview."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "diy_browser"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Versi minor dipatok: `with_webview` di src/platform/linux.rs bergantung pada
+# tipe webkit2gtk/gtk yang bisa berubah di rilis minor Tauri.
+tauri = { version = "2.12", features = ["unstable"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = "2"
+adblock-core = { workspace = true }
+storage = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Harus seversi dengan gtk yang dipakai tauri/wry (0.18).
+gtk = "0.18"

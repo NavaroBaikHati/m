@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Hanya webview chrome (label \"main\") yang boleh memakai IPC Tauri. Webview tab yang memuat situs web tidak mendapat izin apa pun.",
+  "webviews": ["main"],
+  "permissions": ["core:default"]
+}
