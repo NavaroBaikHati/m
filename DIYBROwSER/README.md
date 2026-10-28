@@ -10,7 +10,7 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | Tahap | Isi                                                              | Status    |
 | ----- | ---------------------------------------------------------------- | --------- |
 | 1     | Workspace, shell Tauri, satu tab, address bar, back/forward/reload | Selesai   |
-| 2     | Banyak tab + sidebar vertikal                                     | Belum     |
+| 2     | Banyak tab + sidebar vertikal                                     | Selesai   |
 | 3     | Adblock request blocking, EasyList + EasyPrivacy, shield per situs | Belum     |
 | 4     | Bookmark, history, download manager, mode gelap/terang            | Belum     |
 | 5     | Cosmetic filter, scriptlet, pembaruan daftar filter               | Belum     |
@@ -78,6 +78,9 @@ bash scripts/smoke-gui.sh
 
 # Uji interaksi: ketik alamat, mundur, maju, muat ulang, situs luar
 bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap1.png scripts/uji/navigasi.sh
+
+# Uji tab: tab baru, pindah tab, tutup tab, ciutkan/buka sidebar
+bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap2.png scripts/uji/tab.sh
 ```
 
 Skrip smoke menyalakan server dev UI (Vite) dan server halaman uji sendiri, lalu
@@ -117,7 +120,12 @@ Capability `default` hanya berlaku untuk webview chrome (label `main`). Webview
 tab yang memuat situs web tidak punya akses IPC sama sekali, dan event dari Rust
 ditargetkan khusus ke label `main`.
 
-### Tinggi chrome
+### Tinggi chrome dan sidebar
 
-`TINGGI_CHROME` di `src-tauri/src/tabs.rs` harus sama dengan `--tinggi-chrome` di
-`ui/src/app.css`.
+`TINGGI_CHROME` dan `LEBAR_SIDEBAR` di `src-tauri/src/tabs.rs` harus sama dengan
+`--tinggi-chrome` dan `--lebar-sidebar` di `ui/src/app.css`. Saat sidebar
+diciutkan, `x` area isi tab menjadi 0 dan lebarnya ditambah `LEBAR_SIDEBAR`.
+
+Hanya tab aktif yang diposisikan dan ditampilkan; tab lain disembunyikan dengan
+`Webview::hide`. Karena `atur_batas` di Linux memanggil `widget.show()`, jangan
+memanggilnya untuk tab yang tidak aktif.
