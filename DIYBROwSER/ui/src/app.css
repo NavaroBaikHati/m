@@ -1,10 +1,12 @@
 :root {
-  /* Harus sama dengan TINGGI_CHROME di src-tauri/src/tabs.rs */
+  /* Harus sama dengan TINGGI_CHROME dan LEBAR_SIDEBAR di src-tauri/src/tabs.rs */
   --tinggi-chrome: 48px;
+  --lebar-sidebar: 216px;
 
   color-scheme: light dark;
   --latar: #f4f5f7;
   --chrome: #ffffff;
+  --sidebar: #eceef2;
   --garis: #d9dce1;
   --teks: #1b1f24;
   --teks-samar: #5c6470;
@@ -15,6 +17,7 @@
   :root {
     --latar: #17191c;
     --chrome: #202327;
+    --sidebar: #1b1e21;
     --garis: #33383e;
     --teks: #e8eaed;
     --teks-samar: #9aa3ad;

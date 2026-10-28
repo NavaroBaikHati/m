@@ -10,6 +10,13 @@ export interface KeadaanTab {
   title: string;
 }
 
+/** Sama dengan `DaftarTab` di src-tauri/src/tabs.rs */
+export interface DaftarTab {
+  tabs: KeadaanTab[];
+  aktif: string | null;
+  sidebarTerbuka: boolean;
+}
+
 /** Perubahan sebagian: hanya field yang berubah yang diisi Rust. */
 export interface PeristiwaNavigasi {
   tab: string;
@@ -19,7 +26,11 @@ export interface PeristiwaNavigasi {
 }
 
 export const api = {
-  tabAktif: () => invoke<KeadaanTab | null>("tab_aktif"),
+  daftarTab: () => invoke<DaftarTab>("daftar_tab"),
+  tabBaru: (input?: string) => invoke<DaftarTab>("tab_baru", { input: input ?? null }),
+  pilihTab: (id: string) => invoke<DaftarTab>("pilih_tab", { id }),
+  tutupTab: (id: string) => invoke<DaftarTab>("tutup_tab", { id }),
+  aturSidebar: (terbuka: boolean) => invoke<DaftarTab>("atur_sidebar", { terbuka }),
   navigasi: (input: string) => invoke<void>("navigasi", { input }),
   mundur: () => invoke<void>("mundur"),
   maju: () => invoke<void>("maju"),

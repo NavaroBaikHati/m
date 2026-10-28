@@ -13,6 +13,11 @@ const SKEMA_DIIZINKAN: &[&str] = &["http", "https", "file", "about"];
 /// URL yang dibuka kalau aplikasi dijalankan tanpa argumen URL.
 pub const URL_AWAL: &str = "https://example.com/";
 
+/// Alamat awal sebagai `Url`; konstanta di atas dijamin valid oleh unit test.
+pub fn url_awal() -> Url {
+    Url::parse(URL_AWAL).expect("URL_AWAL harus berupa URL yang valid")
+}
+
 /// Mengubah input address bar menjadi URL.
 ///
 /// Urutan keputusan: URL lengkap yang skemanya dikenal -> dianggap host (mis.
@@ -104,5 +109,10 @@ mod tests {
     fn url_file_diizinkan() {
         let url = dari_input("file:///tmp/uji.html").unwrap();
         assert_eq!(url.scheme(), "file");
+    }
+
+    #[test]
+    fn url_awal_valid() {
+        assert_eq!(url_awal().as_str(), URL_AWAL);
     }
 }

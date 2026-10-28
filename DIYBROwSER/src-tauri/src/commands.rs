@@ -5,13 +5,46 @@
 
 use tauri::State;
 
-use crate::tabs::{KeadaanTab, TabManager};
+use crate::tabs::{DaftarTab, TabManager};
 use crate::url_input;
 
-/// Keadaan tab yang sedang aktif; dipanggil UI saat pertama kali dimuat.
+/// Daftar tab untuk sidebar; dipanggil UI saat pertama kali dimuat.
 #[tauri::command]
-pub async fn tab_aktif(tabs: State<'_, TabManager>) -> Result<Option<KeadaanTab>, String> {
-    Ok(tabs.aktif())
+pub async fn daftar_tab(tabs: State<'_, TabManager>) -> Result<DaftarTab, String> {
+    tabs.daftar()
+}
+
+/// Membuka tab baru dengan `input` dari address bar, atau alamat awal kalau kosong.
+#[tauri::command]
+pub async fn tab_baru(
+    tabs: State<'_, TabManager>,
+    input: Option<String>,
+) -> Result<DaftarTab, String> {
+    let url = input
+        .as_deref()
+        .and_then(url_input::dari_input)
+        .unwrap_or_else(url_input::url_awal);
+    tabs.buka(url)?;
+    tabs.daftar()
+}
+
+#[tauri::command]
+pub async fn pilih_tab(tabs: State<'_, TabManager>, id: String) -> Result<DaftarTab, String> {
+    tabs.pilih(&id)?;
+    tabs.daftar()
+}
+
+#[tauri::command]
+pub async fn tutup_tab(tabs: State<'_, TabManager>, id: String) -> Result<DaftarTab, String> {
+    tabs.tutup(&id)?;
+    tabs.daftar()
+}
+
+/// Membuka (`true`) atau menciutkan (`false`) sidebar vertikal.
+#[tauri::command]
+pub async fn atur_sidebar(tabs: State<'_, TabManager>, terbuka: bool) -> Result<DaftarTab, String> {
+    tabs.atur_sidebar(terbuka)?;
+    tabs.daftar()
 }
 
 /// Menavigasi tab aktif ke `input` yang diketik di address bar.

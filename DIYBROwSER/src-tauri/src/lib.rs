@@ -47,7 +47,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::tab_aktif,
+            commands::daftar_tab,
+            commands::tab_baru,
+            commands::pilih_tab,
+            commands::tutup_tab,
+            commands::atur_sidebar,
             commands::navigasi,
             commands::mundur,
             commands::maju,
@@ -62,7 +66,5 @@ fn url_awal() -> Url {
         .skip(1)
         .find(|argumen| !argumen.starts_with('-'))
         .and_then(|argumen| url_input::dari_input(&argumen))
-        .unwrap_or_else(|| {
-            Url::parse(url_input::URL_AWAL).expect("URL_AWAL harus berupa URL yang valid")
-        })
+        .unwrap_or_else(url_input::url_awal)
 }

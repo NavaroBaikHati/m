@@ -7,6 +7,10 @@ ambil_shot() {
   echo "    screenshot: $1"
 }
 
+# Posisi jendela di layar, diisi oleh fokus_aplikasi.
+JENDELA_X=0
+JENDELA_Y=0
+
 # Memberi fokus ke jendela aplikasi supaya input keyboard sampai.
 # Menunggu sampai jendelanya ada, karena webview dibuat setelah window tampil.
 fokus_aplikasi() {
@@ -21,6 +25,9 @@ fokus_aplikasi() {
     return 1
   fi
   xdotool windowfocus "$jendela"
+  eval "$(xdotool getwindowgeometry --shell "$jendela")"
+  JENDELA_X=$X
+  JENDELA_Y=$Y
 }
 
 # Mengetikkan alamat ke address bar lalu menekan Enter.
@@ -43,6 +50,19 @@ klik_layar() {
   fokus_aplikasi
   xdotool mousemove "$1" "$2" click 1
   sleep "${3:-3}"
+}
+
+# Klik pada koordinat lokal jendela (0,0 = pojok kiri atas klien).
+# $1 x, $2 y, $3 detik tunggu
+klik_jendela() {
+  fokus_aplikasi
+  xdotool mousemove $((JENDELA_X + $1)) $((JENDELA_Y + $2)) click 1
+  sleep "${3:-2}"
+}
+
+# Warna piksel pada screenshot $1 di koordinat lokal jendela ($2,$3).
+piksel_jendela() {
+  convert "$1" -format "%[pixel:p{$((JENDELA_X + $2)),$((JENDELA_Y + $3))}]" info:
 }
 
 # Menekan tombol di chrome berdasarkan nama aksinya.
