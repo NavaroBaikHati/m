@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DIY Browser",
+  "productName": "Perisai",
   "version": "0.1.0",
-  "identifier": "dev.diybrowser.app",
+  "identifier": "dev.perisai.app",
   "build": {
     "beforeDevCommand": "npm --prefix ../ui run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DIY Browser",
+        "title": "Perisai",
         "width": 1200,
         "height": 800,
         "minWidth": 640,
@@ -33,6 +33,6 @@
     "icon": ["icons/icon.png"],
     "category": "Utility",
     "shortDescription": "Browser dengan adblocker bawaan",
-    "longDescription": "Browser desktop lintas OS dengan UI ala Arc dan adblocker ala Brave."
+    "longDescription": "Perisai: browser desktop lintas OS dengan UI ala Arc dan adblocker ala Brave."
   }
 }

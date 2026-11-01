@@ -1,6 +1,9 @@
 # Artefak build
 target/
 
+# Paket installer hasil `cargo tauri build` (dibagikan manual, bukan lewat git)
+rilis/
+
 # Frontend
 node_modules/
 ui/dist/

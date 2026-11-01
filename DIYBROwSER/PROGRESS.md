@@ -2,6 +2,8 @@
 
 ## Status tahap
 
+Nama produk: **Perisai** (crate `perisai`, biner `perisai`, paket `perisai`).
+
 | Tahap | Isi | Status |
 | --- | --- | --- |
 | 1 | Workspace, shell Tauri, satu tab, address bar, back/forward/reload | Selesai |
@@ -22,13 +24,27 @@
   Bukti: `docs/laporan/tahap-2.md` + 7 screenshot `docs/screenshots/tahap2-*.png`
   dan 3 pemeriksaan piksel di `scripts/uji/tab.sh`.
 
-## Verifikasi terakhir (28 Oktober 2026)
+## Rilis 0.1.0 (1 November 2026)
+
+- Ganti nama produk jadi **Perisai**: `productName`, `identifier`
+  (`dev.perisai.app`), crate `perisai`, judul jendela, merek sidebar, skrip uji,
+  dan Dockerfile. Lihat `docs/laporan/rilis-0.1.0.md`.
+- `cargo tauri build --bundles deb,rpm,appimage` menghasilkan AppImage 78 MB,
+  `.deb` dan `.rpm` 2,9 MB, plus biner telanjang 12 MB di `rilis/`.
+- Biner rilis, paket `.deb` yang sudah dipasang, dan AppImage masing-masing
+  dijalankan di Xvfb dengan skenario tab lengkap: lolos tanpa panic.
+- Bug uji diperbaiki: `cari_jendela_utama()` di `scripts/uji/helper-xvfb.sh`
+  menyaring jendela pembantu GTK 10x10 bernama `perisai` yang membuat
+  `xdotool windowfocus` gagal dengan `BadMatch`.
+
+## Verifikasi terakhir (1 November 2026)
 
 - `cargo fmt --all --check` — lolos.
 - `cargo clippy --workspace --all-targets -- -D warnings` — lolos, 0 warning.
-- `cargo test --workspace` — 17 lolos (adblock-core 3, diy-browser 11, storage 3).
+- `cargo test --workspace` — 17 lolos (adblock-core 3, perisai 11, storage 3).
 - `npm --prefix ui run build` — lolos.
 - `bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap2.png scripts/uji/tab.sh` — lolos.
+- Biner rilis + `.deb` terpasang + AppImage di Xvfb — lolos (skenario tab, 0 panic).
 
 ## Langkah berikut
 

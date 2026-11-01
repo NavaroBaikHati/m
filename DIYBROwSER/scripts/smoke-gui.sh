@@ -26,7 +26,7 @@ SHOT_DIR="$(dirname "$SHOT")"
 
 export PATH="$HOME/.cargo/bin:$PATH"
 TARGET_DIR="${CARGO_TARGET_DIR:-$AKAR/target}"
-BIN="$TARGET_DIR/debug/diy-browser"
+BIN="$TARGET_DIR/debug/perisai"
 
 # Rendering perangkat lunak: VPS tanpa GPU sering bikin WebKitGTK gagal render.
 export LIBGL_ALWAYS_SOFTWARE=1
@@ -35,9 +35,9 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export GDK_BACKEND=x11
 export NO_AT_BRIDGE=1
 
-LOG_APLIKASI="$(mktemp -t diybrowser-app-XXXXXX.log)"
-LOG_UI="$(mktemp -t diybrowser-ui-XXXXXX.log)"
-LOG_HALAMAN="$(mktemp -t diybrowser-halaman-XXXXXX.log)"
+LOG_APLIKASI="$(mktemp -t perisai-app-XXXXXX.log)"
+LOG_UI="$(mktemp -t perisai-ui-XXXXXX.log)"
+LOG_HALAMAN="$(mktemp -t perisai-halaman-XXXXXX.log)"
 GAGAL=0
 
 bersihkan() {
@@ -62,8 +62,8 @@ tunggu_url() {
   return 1
 }
 
-echo "==> Build debug (cargo build -p diy-browser)"
-(cd "$AKAR" && cargo build -p diy-browser)
+echo "==> Build debug (cargo build -p perisai)"
+(cd "$AKAR" && cargo build -p perisai)
 [[ -x "$BIN" ]] || {
   echo "GAGAL: biner $BIN tidak ada"
   exit 1
@@ -92,7 +92,7 @@ tunggu_url "$BASE_HALAMAN/" || {
 
 mkdir -p "$SHOT_DIR"
 
-SKRIP_DALAM="$(mktemp -t diybrowser-xvfb-XXXXXX.sh)"
+SKRIP_DALAM="$(mktemp -t perisai-xvfb-XXXXXX.sh)"
 cat >"$SKRIP_DALAM" <<'SKRIP'
 set -u
 export APP_PID=""

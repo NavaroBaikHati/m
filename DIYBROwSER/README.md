@@ -1,7 +1,11 @@
-# DIY Browser (nama kerja)
+# Perisai
 
 Browser desktop lintas OS: UI ringkas ala Arc + adblock bawaan ala Brave, dibangun
 dengan Rust (Tauri v2) dan Svelte. Tanpa telemetri; semua data tinggal di lokal.
+
+Nama produk **Perisai** (pelindung) dipakai sejak 1 Nov 2026; crate Rust-nya
+bernama `perisai`, biner hasil build `target/*/perisai`, dan paket installer
+`.deb`/`.rpm`/AppImage memakai nama `Perisai`/`perisai`.
 
 PRD lengkap ada di [PRD.md](PRD.md).
 
@@ -15,14 +19,36 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Bookmark, history, download manager, mode gelap/terang            | Belum     |
 | 5     | Cosmetic filter, scriptlet, pembaruan daftar filter               | Belum     |
 
-Catatan verifikasi tiap tahap ada di `docs/laporan/`.
+Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+[laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md).
+
+## Paket terpasang (rilis 0.1.0)
+
+Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit): AppImage, `.deb`,
+`.rpm`, biner telanjang, dan `SHA256SUMS`.
+
+**Arch Linux** — pakai AppImage, karena `.deb`/`.rpm` bukan format pacman:
+
+```bash
+chmod +x Perisai_0.1.0_amd64.AppImage
+./Perisai_0.1.0_amd64.AppImage          # tambahkan fuse2 kalau diminta
+```
+
+Biner telanjang juga bisa langsung dijalankan (`./perisai-0.1.0-linux-x86_64`)
+selama `webkit2gtk-4.1` dan `gtk3` terpasang.
+
+**Debian/Ubuntu:** `sudo apt install ./Perisai_0.1.0_amd64.deb`
+**Fedora:** `sudo dnf install ./Perisai-0.1.0-1.x86_64.rpm`
+
+Setelah terpasang, Perisai muncul di menu aplikasi (`Name=Perisai`) atau bisa
+dijalankan dengan perintah `perisai`.
 
 ## Struktur repo
 
 ```
 crates/adblock-core/   Logika adblock murni, tanpa dependensi Tauri/UI
 crates/storage/        SQLite: pengaturan (bookmark & history menyusul)
-src-tauri/             Aplikasi Tauri: tab manager, perintah IPC, penyesuaian platform
+src-tauri/             Aplikasi Tauri (crate `perisai`): tab manager, IPC, penyesuaian platform
 ui/                    Frontend Svelte + TypeScript (chrome browser)
 scripts/               Uji GUI tanpa layar (Xvfb) + skenario navigasi
 docs/screenshots/      Bukti screenshot hasil uji
@@ -64,7 +90,14 @@ Argumen pertama yang bukan flag diperlakukan sebagai alamat awal, misalnya
 `cargo tauri dev -- https://example.com/`. Tanpa argumen, aplikasi membuka
 `https://example.com/` (placeholder sampai ada halaman tab baru).
 
-Build rilis: `cargo tauri build`.
+Build rilis beserta paketnya:
+
+```bash
+cargo tauri build --bundles deb,rpm,appimage   # butuh rpmbuild untuk target rpm
+```
+
+Hasilnya di `target/release/bundle/`. `target/release/perisai` adalah binernya
+sendiri (UI sudah tertanam, jadi tidak butuh Vite seperti build debug).
 
 ## Uji
 
@@ -90,8 +123,8 @@ jadi Vite harus hidup saat aplikasi debug dijalankan.
 Docker (lingkungan Arch):
 
 ```bash
-docker build -t diybrowser-arch .
-docker run --rm diybrowser-arch cargo test --workspace
+docker build -t perisai-arch .
+docker run --rm perisai-arch cargo test --workspace
 ```
 
 ## Catatan teknis

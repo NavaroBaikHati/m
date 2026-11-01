@@ -1,13 +1,13 @@
 [package]
-name = "diy-browser"
-description = "Cangkang browser DIY: window Tauri, tab manager berbasis child webview."
+name = "perisai"
+description = "Perisai: cangkang browser, window Tauri, tab manager berbasis child webview."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "diy_browser"
+name = "perisai"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

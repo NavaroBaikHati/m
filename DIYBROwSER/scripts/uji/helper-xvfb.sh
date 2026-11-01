@@ -11,12 +11,33 @@ ambil_shot() {
 JENDELA_X=0
 JENDELA_Y=0
 
+# Mencari jendela utama berdasarkan judul dan ukuran.
+#
+# `xdotool search --name` cocok sebagian dan tidak peka huruf besar-kecil, jadi
+# judul "Perisai" juga mengenai jendela pembantu GTK 10x10 bernama "perisai".
+# Jendela pembantu itu tidak bisa difokuskan (X_SetInputFocus -> BadMatch),
+# maka pilih jendela yang benar-benar besar.
+cari_jendela_utama() {
+  local w
+  for w in $(xdotool search --name 'Perisai' 2>/dev/null || true); do
+    local geometri lebar tinggi
+    geometri="$(xdotool getwindowgeometry --shell "$w" 2>/dev/null || true)"
+    lebar="$(sed -n 's/^WIDTH=\([0-9]*\)$/\1/p' <<<"$geometri")"
+    tinggi="$(sed -n 's/^HEIGHT=\([0-9]*\)$/\1/p' <<<"$geometri")"
+    if [[ -n "$lebar" && -n "$tinggi" && "$lebar" -ge 400 && "$tinggi" -ge 300 ]]; then
+      echo "$w"
+      return 0
+    fi
+  done
+  return 0
+}
+
 # Memberi fokus ke jendela aplikasi supaya input keyboard sampai.
 # Menunggu sampai jendelanya ada, karena webview dibuat setelah window tampil.
 fokus_aplikasi() {
   local jendela=""
   for _ in $(seq 1 40); do
-    jendela="$(xdotool search --name 'DIY Browser' 2>/dev/null | head -1 || true)"
+    jendela="$(cari_jendela_utama)"
     [[ -n "$jendela" ]] && break
     sleep 0.5
   done

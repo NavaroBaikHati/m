@@ -106,7 +106,7 @@
   {#if daftar.sidebarTerbuka}
     <aside class="sidebar">
       <div class="sidebar-kepala">
-        <span class="merek">DIY</span>
+        <span class="merek">Perisai</span>
         <button
           type="button"
           class="ikon"

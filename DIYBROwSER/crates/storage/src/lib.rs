@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn data_bertahan_setelah_dibuka_ulang() {
         let path = std::env::temp_dir().join(format!(
-            "diybrowser-storage-{}-{:?}.sqlite",
+            "perisai-storage-{}-{:?}.sqlite",
             std::process::id(),
             std::thread::current().id()
         ));

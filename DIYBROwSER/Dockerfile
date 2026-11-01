@@ -1,10 +1,10 @@
 # Build/uji di lingkungan yang sama dengan mesin uji (Arch Linux).
 #
-#   docker build -t diybrowser-arch .                  # siapkan dependensi + UI
-#   docker run --rm diybrowser-arch cargo test --workspace
-#   docker run --rm diybrowser-arch cargo build --release --locked
+#   docker build -t perisai-arch .                     # siapkan dependensi + UI
+#   docker run --rm perisai-arch cargo test --workspace
+#   docker run --rm perisai-arch cargo build --release --locked
 #   docker run --rm -v "$PWD/docs/screenshots:/app/docs/screenshots" \
-#     diybrowser-arch scripts/smoke-gui.sh
+#     perisai-arch scripts/smoke-gui.sh
 #
 # Daftar paket di bawah juga berlaku untuk instalasi langsung di Arch
 # (lihat README bagian Dependensi Sistem).
