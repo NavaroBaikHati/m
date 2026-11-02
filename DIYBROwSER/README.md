@@ -15,30 +15,55 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | ----- | ---------------------------------------------------------------- | --------- |
 | 1     | Workspace, shell Tauri, satu tab, address bar, back/forward/reload | Selesai   |
 | 2     | Banyak tab + sidebar vertikal                                     | Selesai   |
-| 3     | Adblock request blocking, EasyList + EasyPrivacy, shield per situs | Belum     |
-| 4     | Bookmark, history, download manager, mode gelap/terang            | Belum     |
-| 5     | Cosmetic filter, scriptlet, pembaruan daftar filter               | Belum     |
+| 3     | Adblock (EasyList + EasyPrivacy), Perlindungan per situs, UI baru, bookmark, riwayat, unduhan, zoom, sesi, pintasan | Selesai (Linux) |
+| 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
+| 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
-[laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md).
+Versi 0.2.0. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+[laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
+[laporan Tahap 3](docs/laporan/tahap-3.md), dan
+[laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md).
 
-## Paket terpasang (rilis 0.1.0)
+## Fitur
 
-Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit): AppImage, `.deb`,
-`.rpm`, biner telanjang, dan `SHA256SUMS`.
+- **Perlindungan Perisai** — EasyList + EasyPrivacy dikompilasi menjadi content
+  blocker WebKit (130.066 aturan), dipasang sebelum halaman dimuat, plus
+  scriptlet khusus YouTube dan aturan tambahan Perisai. Bisa dimatikan per situs
+  lewat panel di address bar.
+- **Tab manager vertikal** dengan avatar situs, indikator memuat, nomor tab, dan
+  sidebar yang bisa diciutkan.
+- **Address bar pill** yang menampilkan host tebal + jalur samar saat tidak
+  difokuskan, tombol Perlindungan, dan tombol bookmark.
+- **Halaman tab baru** dengan pencarian dan pintasan situs favorit.
+- **Bookmark, riwayat, unduhan, zoom per situs, pemulihan sesi, tema
+  sistem/terang/gelap.**
+- **Pintasan keyboard** tanpa menu bar (lihat tabel di bawah).
+
+### Pintasan (Linux)
+
+`Ctrl+T` tab baru · `Ctrl+Shift+T` buka tab tertutup · `Ctrl+W` tutup tab ·
+`Ctrl+Tab` pindah tab · `Ctrl+L` fokus address bar · `Ctrl+R` muat ulang ·
+`Ctrl+B` sidebar · `Ctrl+D` bookmark · `Ctrl+J` unduhan · `Ctrl+H` riwayat ·
+`Ctrl+K` menu · `Ctrl+=` / `Ctrl+-` / `Ctrl+0` zoom · `Alt+←` / `Alt+→`
+mundur/maju · `Ctrl+Q` keluar.
+
+## Paket terpasang (rilis 0.2.0)
+
+Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit) dan di GitHub
+Release `v0.2.0`: AppImage, `.deb`, `.rpm`, biner telanjang, dan `SHA256SUMS`.
 
 **Arch Linux** — pakai AppImage, karena `.deb`/`.rpm` bukan format pacman:
 
 ```bash
-chmod +x Perisai_0.1.0_amd64.AppImage
-./Perisai_0.1.0_amd64.AppImage          # tambahkan fuse2 kalau diminta
+chmod +x Perisai_0.2.0_amd64.AppImage
+./Perisai_0.2.0_amd64.AppImage          # tambahkan fuse2 kalau diminta
 ```
 
-Biner telanjang juga bisa langsung dijalankan (`./perisai-0.1.0-linux-x86_64`)
+Biner telanjang juga bisa langsung dijalankan (`./perisai-0.2.0-linux-x86_64`)
 selama `webkit2gtk-4.1` dan `gtk3` terpasang.
 
-**Debian/Ubuntu:** `sudo apt install ./Perisai_0.1.0_amd64.deb`
-**Fedora:** `sudo dnf install ./Perisai-0.1.0-1.x86_64.rpm`
+**Debian/Ubuntu:** `sudo apt install ./Perisai_0.2.0_amd64.deb`
+**Fedora:** `sudo dnf install ./Perisai-0.2.0-1.x86_64.rpm`
 
 Setelah terpasang, Perisai muncul di menu aplikasi (`Name=Perisai`) atau bisa
 dijalankan dengan perintah `perisai`.
@@ -46,8 +71,8 @@ dijalankan dengan perintah `perisai`.
 ## Struktur repo
 
 ```
-crates/adblock-core/   Logika adblock murni, tanpa dependensi Tauri/UI
-crates/storage/        SQLite: pengaturan (bookmark & history menyusul)
+crates/adblock-core/   Mesin adblock (adblock-rust) + content blocker + scriptlet
+crates/storage/        SQLite: pengaturan, riwayat, bookmark, unduhan
 src-tauri/             Aplikasi Tauri (crate `perisai`): tab manager, IPC, penyesuaian platform
 ui/                    Frontend Svelte + TypeScript (chrome browser)
 scripts/               Uji GUI tanpa layar (Xvfb) + skenario navigasi
@@ -88,7 +113,7 @@ tanpa memasang CLI Rust: `npm --prefix ui run tauri dev`.
 
 Argumen pertama yang bukan flag diperlakukan sebagai alamat awal, misalnya
 `cargo tauri dev -- https://example.com/`. Tanpa argumen, aplikasi membuka
-`https://example.com/` (placeholder sampai ada halaman tab baru).
+halaman tab baru Perisai dan memulihkan sesi terakhir kalau ada.
 
 Build rilis beserta paketnya:
 
@@ -114,6 +139,15 @@ bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap1.png scr
 
 # Uji tab: tab baru, pindah tab, tutup tab, ciutkan/buka sidebar
 bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap2.png scripts/uji/tab.sh
+
+# Uji pintasan keyboard (Ctrl+T/W/L/B)
+bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap3-pintasan.png scripts/uji/pintasan.sh
+
+# Adblock: dua putaran, dengan pembanding "tanpa aturan uji"
+bash scripts/uji-adblock.sh
+
+# Bookmark, riwayat, zoom, dan sesi: diperiksa langsung di SQLite
+bash scripts/uji-fitur.sh
 ```
 
 Skrip smoke menyalakan server dev UI (Vite) dan server halaman uji sendiri, lalu
@@ -152,6 +186,40 @@ minor (mis. `2.12`).
 Capability `default` hanya berlaku untuk webview chrome (label `main`). Webview
 tab yang memuat situs web tidak punya akses IPC sama sekali, dan event dari Rust
 ditargetkan khusus ke label `main`.
+
+### Cara Perlindungan bekerja
+
+Mesin adblock (`crates/adblock-core`) mengompilasi EasyList, EasyPrivacy, dan
+aturan tambahan Perisai menjadi **content blocker JSON** (format Safari, dipakai
+WebKitGTK). `src-tauri/src/platform/linux/filter.rs` menyimpannya lewat
+`WebKitUserContentFilterStore` — binding Rust-nya tidak membungkus tipe filter,
+jadi modul itu memakai FFI — lalu memasangnya ke `WebKitUserContentManager`
+setiap webview. WebKit yang mencocokkan request, jadi tidak ada biaya
+per-request di sisi Rust.
+
+Konsekuensi yang perlu diketahui: WebKit tidak melaporkan request yang diblokir,
+sehingga panel Perlindungan menampilkan jumlah aturan aktif dan selector khusus
+situs, bukan angka iklan yang diblokir. Jalur Windows (`WebResourceRequested`)
+dan macOS (`WKContentRuleList`) belum dikerjakan.
+
+Filter hasil kompilasi di-cache di `~/.cache/dev.perisai.app/adblock/`.
+Daftar diunduh ulang bila lebih tua dari 24 jam; kalau unduhan gagal, cache lama
+tetap dipakai. Cache hanya dipakai ulang kalau sidiknya cocok dengan daftar yang
+ada (`filter.sig`), supaya filter basi tidak sempat dipasang.
+
+### Akselerasi perangkat keras
+
+WebKit disetel `HardwareAccelerationPolicy::Always`, WebGL, smooth scrolling, dan
+media stream aktif. Untuk memaksa render perangkat lunak (mesin tanpa GPU,
+driver rusak, atau sesi Xvfb):
+
+```bash
+PERISAI_RENDER_SOFTWARE=1 ./target/debug/perisai
+```
+
+Variabel `LIBGL_ALWAYS_SOFTWARE` dan `WEBKIT_DISABLE_COMPOSITING_MODE` juga
+dihormati. Sesi uji repo ini selalu memakai render perangkat lunak, jadi
+performa GPU nyata belum diukur.
 
 ### Tinggi chrome dan sidebar
 

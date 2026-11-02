@@ -1,28 +1,65 @@
 :root {
   /* Harus sama dengan TINGGI_CHROME dan LEBAR_SIDEBAR di src-tauri/src/tabs.rs */
-  --tinggi-chrome: 48px;
-  --lebar-sidebar: 216px;
+  --tinggi-chrome: 52px;
+  --lebar-sidebar: 232px;
 
   color-scheme: light dark;
-  --latar: #f4f5f7;
-  --chrome: #ffffff;
-  --sidebar: #eceef2;
-  --garis: #d9dce1;
-  --teks: #1b1f24;
-  --teks-samar: #5c6470;
-  --aksen: #1f6feb;
+  --latar: #f5f3ef;
+  --chrome: #fbfaf8;
+  --sidebar: #efece6;
+  --panel: rgba(255, 255, 255, 0.92);
+  --kartu: #ffffff;
+  --kartu-lembut: rgba(23, 22, 28, 0.06);
+  --garis: #e3ded6;
+  --teks: #1b1922;
+  --samar: #6f6a78;
+  --aksen: #6b4dfb;
+  --aksen-2: #ff7a59;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --latar: #17191c;
-    --chrome: #202327;
-    --sidebar: #1b1e21;
-    --garis: #33383e;
-    --teks: #e8eaed;
-    --teks-samar: #9aa3ad;
-    --aksen: #6aa4ff;
+    --latar: #131218;
+    --chrome: #19171f;
+    --sidebar: #17151d;
+    --panel: rgba(32, 29, 40, 0.94);
+    --kartu: #262330;
+    --kartu-lembut: rgba(242, 240, 247, 0.07);
+    --garis: #2e2a39;
+    --teks: #f0eef5;
+    --samar: #a09bab;
+    --aksen: #9b86ff;
+    --aksen-2: #ff9678;
   }
+}
+
+/* Pilihan tema manual di Menu menimpa preferensi sistem. */
+:root[data-tema="terang"] {
+  --latar: #f5f3ef;
+  --chrome: #fbfaf8;
+  --sidebar: #efece6;
+  --panel: rgba(255, 255, 255, 0.92);
+  --kartu: #ffffff;
+  --kartu-lembut: rgba(23, 22, 28, 0.06);
+  --garis: #e3ded6;
+  --teks: #1b1922;
+  --samar: #6f6a78;
+  --aksen: #6b4dfb;
+  --aksen-2: #ff7a59;
+}
+
+:root[data-tema="gelap"] {
+  --latar: #131218;
+  --chrome: #19171f;
+  --sidebar: #17151d;
+  --panel: rgba(32, 29, 40, 0.94);
+  --kartu: #262330;
+  --kartu-lembut: rgba(242, 240, 247, 0.07);
+  --garis: #2e2a39;
+  --teks: #f0eef5;
+  --samar: #a09bab;
+  --aksen: #9b86ff;
+  --aksen-2: #ff9678;
 }
 
 * {
@@ -40,4 +77,20 @@ body {
   font-size: 14px;
   /* Area di bawah chrome ditempati webview tab, bukan oleh UI ini. */
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--teks) 22%, transparent);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }

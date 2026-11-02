@@ -10,7 +10,7 @@ set -euo pipefail
 
 echo "==> Skenario: klik tautan di dalam halaman"
 # Tautan "Buka halaman kedua" pada scripts/smoke/index.html (koordinat layar).
-klik_layar 513 464 5
+klik_layar 521 468 5
 ambil_shot "$SHOT_DIR/uji-1-klik-tautan.png"
 
 echo "==> Skenario: ketik alamat situs luar lewat address bar"

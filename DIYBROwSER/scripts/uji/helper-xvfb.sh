@@ -56,8 +56,8 @@ fokus_aplikasi() {
 ketik_alamat() {
   fokus_aplikasi
   sleep 1
-  # Address bar ada di baris chrome (tinggi 48 px, jadi titik tengahnya ~y=24).
-  xdotool mousemove 400 24 click 1
+  # Address bar ada di baris chrome (tinggi 52 px, jadi titik tengahnya ~y=26).
+  xdotool mousemove 700 26 click 1
   sleep 0.5
   xdotool key --clearmodifiers ctrl+a
   xdotool type --delay 30 "$1"
@@ -91,15 +91,15 @@ piksel_jendela() {
 tombol_chrome() {
   local x
   case "$1" in
-  mundur) x=68 ;;
-  maju) x=103 ;;
-  muat-ulang) x=138 ;;
+  mundur) x=259 ;;
+  maju) x=291 ;;
+  muat-ulang) x=323 ;;
   *)
     echo "GAGAL: tombol chrome tidak dikenal: $1"
     return 1
     ;;
   esac
   fokus_aplikasi
-  xdotool mousemove "$x" 24 click 1
+  xdotool mousemove "$x" 26 click 1
   sleep "${2:-3}"
 }

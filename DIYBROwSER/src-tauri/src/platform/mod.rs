@@ -10,9 +10,15 @@
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{atur_batas, siapkan_wadah};
+pub use linux::{
+    atur_batas, filter_siap, lepas_filter, pasang_filter, pasang_filter_ke, pasang_pintasan,
+    siapkan_wadah,
+};
 
 #[cfg(not(target_os = "linux"))]
 mod lainnya;
 #[cfg(not(target_os = "linux"))]
-pub use lainnya::{atur_batas, siapkan_wadah};
+pub use lainnya::{
+    atur_batas, filter_siap, lepas_filter, pasang_filter, pasang_filter_ke, pasang_pintasan,
+    siapkan_wadah,
+};

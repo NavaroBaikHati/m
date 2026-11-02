@@ -1,0 +1,2 @@
+! Aturan khusus pengujian: memblokir skrip "iklan" di server uji lokal.
+iklan.js

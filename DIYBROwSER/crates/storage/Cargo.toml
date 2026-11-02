@@ -8,3 +8,4 @@ publish.workspace = true
 
 [dependencies]
 rusqlite = { version = "0.41.0", features = ["bundled"] }
+serde = { workspace = true }

@@ -22,7 +22,11 @@ serde_json = { workspace = true }
 url = "2"
 adblock-core = { workspace = true }
 storage = { workspace = true }
+ureq = "2"
+percent-encoding = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Harus seversi dengan gtk yang dipakai tauri/wry (0.18).
 gtk = "0.18"
+# Dipakai langsung untuk content blocker dan setelan render (lihat src/platform/linux).
+webkit2gtk = { version = "=2.0", features = ["v2_40"] }

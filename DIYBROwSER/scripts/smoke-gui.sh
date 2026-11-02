@@ -26,7 +26,9 @@ SHOT_DIR="$(dirname "$SHOT")"
 
 export PATH="$HOME/.cargo/bin:$PATH"
 TARGET_DIR="${CARGO_TARGET_DIR:-$AKAR/target}"
-BIN="$TARGET_DIR/debug/perisai"
+# Bisa ditimpa lewat PERISAI_BIN, mis. untuk menguji biner rilis atau paket
+# yang sudah dipasang (/usr/bin/perisai).
+BIN="${PERISAI_BIN:-$TARGET_DIR/debug/perisai}"
 
 # Rendering perangkat lunak: VPS tanpa GPU sering bikin WebKitGTK gagal render.
 export LIBGL_ALWAYS_SOFTWARE=1
@@ -62,8 +64,10 @@ tunggu_url() {
   return 1
 }
 
-echo "==> Build debug (cargo build -p perisai)"
-(cd "$AKAR" && cargo build -p perisai)
+if [[ -z "${PERISAI_BIN:-}" ]]; then
+  echo "==> Build debug (cargo build -p perisai)"
+  (cd "$AKAR" && cargo build -p perisai)
+fi
 [[ -x "$BIN" ]] || {
   echo "GAGAL: biner $BIN tidak ada"
   exit 1

@@ -1,5 +1,5 @@
-# Artefak build
-target/
+# Artefak build (termasuk symlink target -> /tmp/perisai-target)
+target
 
 # Paket installer hasil `cargo tauri build` (dibagikan manual, bukan lewat git)
 rilis/

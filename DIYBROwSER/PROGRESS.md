@@ -3,66 +3,77 @@
 ## Status tahap
 
 Nama produk: **Perisai** (crate `perisai`, biner `perisai`, paket `perisai`).
+Versi sekarang: **0.2.0**.
 
 | Tahap | Isi | Status |
 | --- | --- | --- |
 | 1 | Workspace, shell Tauri, satu tab, address bar, back/forward/reload | Selesai |
 | 2 | Banyak tab + sidebar vertikal yang bisa diciutkan | Selesai |
-| 3 | Adblock request blocking (EasyList + EasyPrivacy) + shield per situs | Belum |
-| 4 | Bookmark, history, download manager, mode gelap/terang | Belum |
-| 5 | Cosmetic filter, scriptlet, pembaruan daftar filter | Belum |
+| 3 | Adblock (EasyList + EasyPrivacy) + Perlindungan per situs, UI baru, bookmark, riwayat, unduhan, zoom, sesi, pintasan | Selesai (Linux) |
+| 4 | Mode privat, find in page, spaces, pin tab, command palette | Belum |
+| 5 | Penghitung iklan per request, jalur Windows/macOS | Belum |
 
 ## Selesai
 
-- **Tahap 1** — lihat `docs/laporan/tahap-1.md`. Verifikasi diulang 28 Okt: fmt,
-  clippy, 13 test, dan smoke GUI (Xvfb) lolos.
-- **Tahap 2 (28 Okt)** — `TabManager` kini mengelola banyak tab (`buka`, `pilih`,
-  `tutup`, `atur_sidebar`); hanya tab aktif yang ditempatkan dan ditampilkan.
-  Sidebar vertikal di UI Svelte berisi judul tab, indikator memuat, tombol tutup,
-  tombol tab baru, dan tombol ciut/buka. Menutup tab terakhir membuka tab baru.
-  IPC baru: `daftar_tab`, `tab_baru`, `pilih_tab`, `tutup_tab`, `atur_sidebar`.
-  Bukti: `docs/laporan/tahap-2.md` + 7 screenshot `docs/screenshots/tahap2-*.png`
-  dan 3 pemeriksaan piksel di `scripts/uji/tab.sh`.
+- **Tahap 1** — lihat `docs/laporan/tahap-1.md`.
+- **Tahap 2** — lihat `docs/laporan/tahap-2.md`. Multi tab, sidebar vertikal,
+  hanya tab aktif yang ditempatkan.
+- **Tahap 3 (2 Nov 2026)** — lihat `docs/laporan/tahap-3.md`.
+  - `adblock-core` kini mesin sungguhan (adblock-rust 0.13): EasyList +
+    EasyPrivacy + aturan Perisai → 130.066 aturan content blocker JSON (14 MB),
+    dikompilasi WebKit menjadi rule list 42 MB.
+  - Content blocker dipasang di Linux lewat FFI (`WebKitUserContentFilterStore`
+    tidak dibungkus binding Rust) ke setiap `WebKitUserContentManager`.
+  - Scriptlet YouTube (`SCRIPTLET_YOUTUBE`) dan cosmetic filter untuk permukaan
+    iklan YouTube; endpoint statistik iklan diblokir.
+  - Panel Perlindungan per situs (aturan aktif + selector, toggle yang langsung
+    berlaku), tanpa mengarang angka "iklan diblokir".
+  - Halaman tab baru (`beranda.html`), bookmark, riwayat, unduhan, zoom per
+    situs, pemulihan sesi, tema sistem/terang/gelap, pintasan keyboard lewat
+    handler GTK, dan UI baru (address bar pill, tab manager, panel samping).
+  - Setelan render: akselerasi GPU `Always`, WebGL, smooth scrolling, devtools
+    hanya di build debug, dan jalur perangkat lunak lewat
+    `PERISAI_RENDER_SOFTWARE=1`.
+- **Rilis 0.1.0** — lihat `docs/laporan/rilis-0.1.0.md`.
+- **Rilis 0.2.0 (2 Nov 2026)** — lihat `docs/laporan/rilis-0.2.0.md`. AppImage
+  81 MB, `.deb`/`.rpm` 6,3 MB, biner 21 MB + `SHA256SUMS` di `rilis/`. Biner
+  rilis, AppImage (extract-and-run), dan `.deb` terpasang semuanya lolos uji
+  skenario tab di Xvfb tanpa panic.
 
-## Rilis 0.1.0 (1 November 2026)
-
-- Ganti nama produk jadi **Perisai**: `productName`, `identifier`
-  (`dev.perisai.app`), crate `perisai`, judul jendela, merek sidebar, skrip uji,
-  dan Dockerfile. Lihat `docs/laporan/rilis-0.1.0.md`.
-- `cargo tauri build --bundles deb,rpm,appimage` menghasilkan AppImage 78 MB,
-  `.deb` dan `.rpm` 2,9 MB, plus biner telanjang 12 MB di `rilis/`.
-- Biner rilis, paket `.deb` yang sudah dipasang, dan AppImage masing-masing
-  dijalankan di Xvfb dengan skenario tab lengkap: lolos tanpa panic.
-- Bug uji diperbaiki: `cari_jendela_utama()` di `scripts/uji/helper-xvfb.sh`
-  menyaring jendela pembantu GTK 10x10 bernama `perisai` yang membuat
-  `xdotool windowfocus` gagal dengan `BadMatch`.
-
-## Verifikasi terakhir (1 November 2026)
+## Verifikasi terakhir (2 November 2026)
 
 - `cargo fmt --all --check` — lolos.
 - `cargo clippy --workspace --all-targets -- -D warnings` — lolos, 0 warning.
-- `cargo test --workspace` — 17 lolos (adblock-core 3, perisai 11, storage 3).
-- `npm --prefix ui run build` — lolos.
-- `bash scripts/smoke-gui.sh http://127.0.0.1:8123/ docs/screenshots/tahap2.png scripts/uji/tab.sh` — lolos.
-- Biner rilis + `.deb` terpasang + AppImage di Xvfb — lolos (skenario tab, 0 panic).
+- `cargo test --workspace` — **31 lolos** (adblock-core 10, perisai 15, storage 6).
+- `npm --prefix ui run build` — lolos tanpa peringatan.
+- `scripts/uji/tab.sh`, `scripts/uji/pintasan.sh` — lolos dengan pemeriksaan piksel.
+- `scripts/uji-adblock.sh` — lolos dua putaran berturut-turut: dengan aturan uji
+  kotak iklan hilang, tanpa aturan uji kotak muncul (pembanding sah).
+- `scripts/uji-fitur.sh` — bookmark, riwayat, zoom per host (1.2), dan sesi
+  terbaca benar di SQLite setelah aplikasi keluar.
+- Panel Perlindungan, Pustaka, dan Menu diperiksa lewat screenshot Xvfb.
 
 ## Langkah berikut
 
-- **Tahap 3:** intersepsi request memakai crate `adblock` (adblock-rust), unduh
-  EasyList + EasyPrivacy, hitung request yang diblokir per tab, dan panel shield
-  per situs dengan toggle on/off. `adblock-core` wajib punya unit test.
+- Paket 0.2.0 (`cargo tauri build`) lalu uji manual di Arch: pemutaran YouTube,
+  akselerasi GPU nyata, Wayland, dan HiDPI.
+- Uji unduhan sungguhan dan pemulihan sesi setelah `kill -9`.
+- Jalur Windows (`WebResourceRequested`) dan macOS (`WKContentRuleList`), serta
+  pintasan keyboard non-Linux.
+- Fitur P1: find in page, mode privat, spaces, pin tab, command palette.
+- Kalau penghitung iklan per request jadi syarat: pertimbangkan WebExtension
+  `send-request` atau pindah ke CEF.
 
 ## Masalah / catatan yang diketahui
 
-- **Belum terverifikasi dari server:** `cargo tauri dev` di Arch dengan layar
-  nyata, Windows/macOS, Wayland, dan HiDPI. Perlu dites manual di Arch:
-  `git pull && cargo tauri dev`.
-- **Disk `/workspaces` penuh** (0 byte) membuat linker gagal; `cargo clean`
-  membebaskan 3,9 GB dan build uji memakai `CARGO_TARGET_DIR=/tmp/diy-target`.
-  Bukan masalah kode, tapi mesin ini perlu ruang kosong sebelum build besar.
-- **Workaround `GtkFixed`** di `src-tauri/src/platform/linux.rs` bergantung pada
-  Tauri 2.12/gtk 0.18 (`with_webview`). Perlu dicek kalau Tauri dinaikkan.
-- **Belum ada:** pintasan keyboard (Ctrl+T/W), drag-reorder tab, pemulihan sesi,
-  dan halaman tab baru khusus. Tab baru membuka `https://example.com/`.
-- Riwayat pemulihan sesi sebelumnya (28 Okt): tidak ada perubahan yang belum
-  di-commit dan build sehat, jadi tidak ada branch `recovery/` yang dibuat.
+- **Iklan video YouTube belum diuji dengan pemutaran sungguhan.** Yang tersedia
+  baru aturan cosmetic + scriptlet pelompat iklan; hasilnya best-effort.
+- **Panel samping memesan ruang** (halaman menyempit saat panel dibuka), karena
+  child webview selalu di atas webview chrome sehingga popover melayang akan
+  tertutup. Ini kompromi yang disengaja.
+- **Akselerasi GPU belum diukur**; semua uji berjalan dengan render perangkat lunak.
+- **Windows/macOS**: Perlindungan belum aktif (no-op), pintasan keyboard belum ada.
+- **Disk `/workspaces` penuh** saat mengerjakan tahap ini; `target/` dipindah ke
+  `/tmp/perisai-target` (symlink) agar linker tidak gagal. Bukan masalah kode.
+- **Workaround `GtkFixed`** di `src-tauri/src/platform/linux/mod.rs` bergantung
+  pada Tauri 2.12/gtk 0.18 (`with_webview`); perlu dicek kalau Tauri dinaikkan.

@@ -7,3 +7,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Mesin milik Brave. `content-blocking` mengubah aturan ABP/uBO menjadi format
+# content blocker WebKit (dipakai WebKitGTK di Linux dan WKWebView di macOS).
+# `single-thread` (fitur bawaan) sengaja dimatikan: mesin harus Send + Sync
+# karena disimpan di state Tauri dan dibaca dari beberapa tab.
+adblock = { version = "0.13", default-features = false, features = [
+    "content-blocking",
+    "embedded-domain-resolver",
+    "full-regex-handling",
+] }
+serde_json = { workspace = true }
