@@ -44,6 +44,10 @@ Versi sekarang: **0.2.0**.
   TLS bawaan AppImage kehilangan seluruh CA karena `libp11-kit` bawaan mematok
   folder PKCS#11 Debian. `src-tauri/src/lingkungan.rs` menulis modul p11-kit
   pengguna yang menunjuk modul trust sistem lewat path absolut.
+- **Rilis 0.2.2 (3 Nov 2026)** — lihat `docs/laporan/rilis-0.2.2.md`. Mesin
+  pencari bisa dipilih (Google bawaan, Bing, DDG, Brave). DuckDuckGo diganti
+  sebagai bawaan karena di jaringan yang memblokirnya pencarian gagal dengan
+  "Unacceptable TLS certificate" padahal situs HTTPS lain normal.
 
 ## Verifikasi terakhir (2 November 2026)
 

@@ -5,6 +5,7 @@
     type Bookmark,
     type DaftarTab,
     type PeristiwaNavigasi,
+    type PilihanMesin,
     type Riwayat,
     type StatusHalaman,
     type Unduhan,
@@ -30,6 +31,7 @@
   let riwayatList = $state<Riwayat[]>([]);
   let unduhanList = $state<Unduhan[]>([]);
   let cariPustaka = $state("");
+  let mesinPencarian = $state<PilihanMesin[]>([]);
 
   let inputAlamat: HTMLInputElement;
   let permintaanStatus = 0;
@@ -46,6 +48,8 @@
     if (tema === "gelap") return "Gelap";
     return "Mengikuti sistem";
   });
+
+  let mesinAktif = $derived(mesinPencarian.find((mesin) => mesin.aktif));
 
   const riwayatTersaring = $derived(
     cariPustaka.trim()
@@ -92,6 +96,7 @@
       try {
         daftar = await api.daftarTab();
         await segarkanStatus();
+        mesinPencarian = await api.daftarMesinPencarian();
         const lepas = await Promise.all([
           api.onNavigasi(tanganiNavigasi),
           api.onPerintah(tanganiPerintah),
@@ -249,6 +254,14 @@
       const baru = await api.aturTema(tema);
       if (status) status = { ...status, tema: baru };
       daftar = { ...daftar, tema: baru };
+    } catch (error) {
+      galat = pesanGalat(error);
+    }
+  }
+
+  async function pasangMesin(slug: string) {
+    try {
+      mesinPencarian = await api.aturMesinPencarian(slug);
     } catch (error) {
       galat = pesanGalat(error);
     }
@@ -792,6 +805,19 @@
             class:aktif={(status?.tema ?? daftar.tema) === nilai}
             onclick={() => pasangTema(nilai)}
           >{label}</button>
+        {/each}
+      </div>
+    </div>
+
+    <div class="baris">
+      <div><strong>Mesin pencari</strong><small>{mesinAktif?.nama ?? "—"}</small></div>
+      <div class="segmen kecil">
+        {#each mesinPencarian as mesin (mesin.slug)}
+          <button
+            type="button"
+            class:aktif={mesin.aktif}
+            onclick={() => pasangMesin(mesin.slug)}
+          >{mesin.nama}</button>
         {/each}
       </div>
     </div>

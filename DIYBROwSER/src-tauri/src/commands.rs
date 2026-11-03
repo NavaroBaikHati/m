@@ -4,12 +4,16 @@
 //! thread utama (lihat catatan deadlock `WebviewBuilder` di dokumentasi Tauri).
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::adblock::Perlindungan;
+use crate::beranda;
 use crate::tabs::{DaftarTab, TabManager};
 use crate::url_input;
 use crate::Database;
+
+/// Kunci pengaturan untuk pilihan mesin pencari.
+const KUNCI_MESIN: &str = "mesin_pencarian";
 
 /// Ringkasan halaman aktif untuk chrome UI.
 #[derive(Debug, Serialize)]
@@ -145,6 +149,48 @@ pub async fn atur_zoom(tabs: State<'_, TabManager>, nilai: f64) -> Result<f64, S
 #[tauri::command]
 pub async fn atur_tema(tabs: State<'_, TabManager>, tema: String) -> Result<String, String> {
     tabs.atur_tema(&tema)
+}
+
+/// Satu pilihan mesin pencari untuk menu.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PilihanMesin {
+    pub slug: &'static str,
+    pub nama: &'static str,
+    pub aktif: bool,
+}
+
+fn daftar_mesin(mesin_aktif: url_input::MesinPencarian) -> Vec<PilihanMesin> {
+    url_input::MesinPencarian::SEMUA
+        .into_iter()
+        .map(|mesin| PilihanMesin {
+            slug: mesin.slug(),
+            nama: mesin.nama(),
+            aktif: mesin == mesin_aktif,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn daftar_mesin_pencarian() -> Vec<PilihanMesin> {
+    daftar_mesin(url_input::mesin_aktif())
+}
+
+/// Menyimpan pilihan mesin pencari dan menulis ulang halaman tab baru.
+#[tauri::command]
+pub async fn atur_mesin_pencarian(
+    app: AppHandle,
+    db: State<'_, Database>,
+    slug: String,
+) -> Result<Vec<PilihanMesin>, String> {
+    let mesin = url_input::atur_mesin(&slug)
+        .ok_or_else(|| format!("mesin pencari tidak dikenal: {slug}"))?;
+    db.0.lock()
+        .map_err(|_| "basis data terkunci".to_string())?
+        .set_pengaturan(KUNCI_MESIN, mesin.slug())
+        .map_err(|e| e.to_string())?;
+    beranda::siapkan(&app)?;
+    Ok(daftar_mesin(mesin))
 }
 
 #[tauri::command]

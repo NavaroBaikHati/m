@@ -10,7 +10,10 @@ use tauri::{AppHandle, Manager, Url};
 /// Nama berkas di folder cache.
 const NAMA: &str = "beranda.html";
 
-/// Menulis halaman tab baru (kalau belum ada) dan mengembalikan URL-nya.
+/// Menulis halaman tab baru dan mengembalikan URL-nya.
+///
+/// Ditulis ulang setiap dipanggil supaya mesin pencari yang baru dipilih di
+/// menu langsung dipakai tab berikutnya.
 pub fn siapkan(app: &AppHandle) -> Result<Url, String> {
     let folder = app
         .path()
@@ -18,9 +21,15 @@ pub fn siapkan(app: &AppHandle) -> Result<Url, String> {
         .map_err(|e| format!("folder cache tidak tersedia: {e}"))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let path = folder.join(NAMA);
-    std::fs::write(&path, HTML).map_err(|e| format!("gagal menulis halaman beranda: {e}"))?;
+    let isi = halaman(crate::url_input::mesin_aktif().templat());
+    std::fs::write(&path, isi).map_err(|e| format!("gagal menulis halaman beranda: {e}"))?;
     let url = Url::from_file_path(&path).map_err(|_| "path beranda tidak valid".to_string())?;
     Ok(url)
+}
+
+/// Isi halaman dengan awalan URL mesin pencari terpasang.
+pub fn halaman(templat: &str) -> String {
+    HTML.replace("__MESIN_PENCARIAN__", templat)
 }
 
 const HTML: &str = r##"<!doctype html>
@@ -155,7 +164,7 @@ const HTML: &str = r##"<!doctype html>
       ? nilai
       : (/^[^\s]+\.[^\s]{2,}$/.test(nilai)
           ? "https://" + nilai
-          : "https://duckduckgo.com/?q=" + encodeURIComponent(nilai));
+          : "__MESIN_PENCARIAN__" + encodeURIComponent(nilai));
     location.href = alamat;
   });
 </script>
@@ -170,9 +179,16 @@ mod tests {
     #[test]
     fn halaman_berisi_pencarian_dan_merek() {
         assert!(HTML.contains("PERISAI"));
-        assert!(HTML.contains("duckduckgo.com"));
+        assert!(HTML.contains("__MESIN_PENCARIAN__"));
         assert!(HTML.contains("prefers-color-scheme: dark"));
         // Halaman tab baru tidak boleh memuat sumber luar selain tautan biasa.
         assert!(!HTML.contains("http://"));
+    }
+
+    #[test]
+    fn mesin_pencarian_terpasang_di_halaman() {
+        let isi = halaman(crate::url_input::MesinPencarian::Bing.templat());
+        assert!(isi.contains("\"https://www.bing.com/search?q=\" + encodeURIComponent"));
+        assert!(!isi.contains("__MESIN_PENCARIAN__"));
     }
 }

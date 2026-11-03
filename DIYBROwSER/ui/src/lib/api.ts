@@ -49,6 +49,12 @@ export interface StatusHalaman {
   perlindungan: Perlindungan;
 }
 
+export interface PilihanMesin {
+  slug: string;
+  nama: string;
+  aktif: boolean;
+}
+
 export interface Bookmark {
   url: string;
   judul: string;
@@ -85,6 +91,8 @@ export const api = {
     invoke<Perlindungan>("atur_perlindungan", { id, aktif }),
   aturZoom: (nilai: number) => invoke<number>("atur_zoom", { nilai }),
   aturTema: (tema: string) => invoke<string>("atur_tema", { tema }),
+  daftarMesinPencarian: () => invoke<PilihanMesin[]>("daftar_mesin_pencarian"),
+  aturMesinPencarian: (slug: string) => invoke<PilihanMesin[]>("atur_mesin_pencarian", { slug }),
   daftarBookmark: () => invoke<Bookmark[]>("daftar_bookmark"),
   toggleBookmark: (url: string, judul: string) =>
     invoke<boolean>("toggle_bookmark", { url, judul }),

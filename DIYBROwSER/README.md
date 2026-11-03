@@ -19,11 +19,12 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.2.1. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.2.2. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
 [laporan Tahap 3](docs/laporan/tahap-3.md),
 [laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
-[laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md).
+[laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md), dan
+[laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md).
 
 ## Fitur
 
@@ -223,6 +224,18 @@ Sejak 0.2.1, `src-tauri/src/lingkungan.rs` mendeteksi keadaan itu saat start
 (hanya bila berjalan dari AppImage dan folder modul Debian tidak ada) lalu
 menulis `~/.config/pkcs11/modules/perisai-trust.module` yang menunjuk modul
 trust sistem lewat path absolut. Berkas itu bisa dihapus kapan saja.
+
+### Mesin pencari (rilis ≥ 0.2.2)
+
+Mesin pencari bisa diganti di menu (☰ → Mesin pencari): **Google** (bawaan),
+Bing, DDG, dan Brave. Pilihan disimpan di basis data dan dipakai oleh address
+bar maupun kotak pencarian di halaman tab baru.
+
+Bawaan diganti dari DuckDuckGo ke Google karena di sebagian jaringan
+DuckDuckGo diblokir atau diintersepsi penyedia internet. Intersepsi itu tampil
+sebagai halaman "Unacceptable TLS certificate" **hanya** saat mencari, padahal
+situs HTTPS lain terbuka normal. Kalau satu mesin terkena, pilih mesin lain —
+browser tidak perlu diubah.
 
 Untuk 0.2.0 yang sudah terpasang, perbaikannya bisa dilakukan manual tanpa
 menunggu rilis baru:

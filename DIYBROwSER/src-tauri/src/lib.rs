@@ -51,6 +51,15 @@ pub fn run() {
                 adblock.atur_nonaktif(daftar.into_iter().collect());
             }
 
+            // Mesin pencari harus diketahui sebelum halaman tab baru ditulis.
+            if let Some(slug) = db
+                .lock()
+                .ok()
+                .and_then(|db| db.get_pengaturan("mesin_pencarian").ok().flatten())
+            {
+                url_input::atur_mesin(&slug);
+            }
+
             let beranda_url = beranda::siapkan(app.handle())?;
             let tabs = TabManager::new(
                 app.handle().clone(),
@@ -120,6 +129,8 @@ pub fn run() {
             commands::atur_perlindungan,
             commands::atur_zoom,
             commands::atur_tema,
+            commands::daftar_mesin_pencarian,
+            commands::atur_mesin_pencarian,
             commands::daftar_bookmark,
             commands::toggle_bookmark,
             commands::daftar_riwayat,
