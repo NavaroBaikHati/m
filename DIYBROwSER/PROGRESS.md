@@ -39,6 +39,11 @@ Versi sekarang: **0.2.0**.
   81 MB, `.deb`/`.rpm` 6,3 MB, biner 21 MB + `SHA256SUMS` di `rilis/`. Biner
   rilis, AppImage (extract-and-run), dan `.deb` terpasang semuanya lolos uji
   skenario tab di Xvfb tanpa panic.
+- **Rilis 0.2.1 (3 Nov 2026)** — lihat `docs/laporan/rilis-0.2.1.md`. Perbaikan
+  "Unacceptable TLS certificate" pada AppImage di distro non-Debian: tumpukan
+  TLS bawaan AppImage kehilangan seluruh CA karena `libp11-kit` bawaan mematok
+  folder PKCS#11 Debian. `src-tauri/src/lingkungan.rs` menulis modul p11-kit
+  pengguna yang menunjuk modul trust sistem lewat path absolut.
 
 ## Verifikasi terakhir (2 November 2026)
 

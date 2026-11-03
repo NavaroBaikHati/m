@@ -19,10 +19,11 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.2.0. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.2.1. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
-[laporan Tahap 3](docs/laporan/tahap-3.md), dan
-[laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md).
+[laporan Tahap 3](docs/laporan/tahap-3.md),
+[laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
+[laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md).
 
 ## Fitur
 
@@ -47,23 +48,23 @@ Versi 0.2.0. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 `Ctrl+K` menu · `Ctrl+=` / `Ctrl+-` / `Ctrl+0` zoom · `Alt+←` / `Alt+→`
 mundur/maju · `Ctrl+Q` keluar.
 
-## Paket terpasang (rilis 0.2.0)
+## Paket terpasang (rilis 0.2.1)
 
 Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit) dan di GitHub
-Release `v0.2.0`: AppImage, `.deb`, `.rpm`, biner telanjang, dan `SHA256SUMS`.
+Release `v0.2.1`: AppImage, `.deb`, `.rpm`, biner telanjang, dan `SHA256SUMS`.
 
 **Arch Linux** — pakai AppImage, karena `.deb`/`.rpm` bukan format pacman:
 
 ```bash
-chmod +x Perisai_0.2.0_amd64.AppImage
-./Perisai_0.2.0_amd64.AppImage          # tambahkan fuse2 kalau diminta
+chmod +x Perisai_0.2.1_amd64.AppImage
+./Perisai_0.2.1_amd64.AppImage          # tambahkan fuse2 kalau diminta
 ```
 
-Biner telanjang juga bisa langsung dijalankan (`./perisai-0.2.0-linux-x86_64`)
+Biner telanjang juga bisa langsung dijalankan (`./perisai-0.2.1-linux-x86_64`)
 selama `webkit2gtk-4.1` dan `gtk3` terpasang.
 
-**Debian/Ubuntu:** `sudo apt install ./Perisai_0.2.0_amd64.deb`
-**Fedora:** `sudo dnf install ./Perisai-0.2.0-1.x86_64.rpm`
+**Debian/Ubuntu:** `sudo apt install ./Perisai_0.2.1_amd64.deb`
+**Fedora:** `sudo dnf install ./Perisai-0.2.1-1.x86_64.rpm`
 
 Setelah terpasang, Perisai muncul di menu aplikasi (`Name=Perisai`) atau bisa
 dijalankan dengan perintah `perisai`.
@@ -206,6 +207,33 @@ Filter hasil kompilasi di-cache di `~/.cache/dev.perisai.app/adblock/`.
 Daftar diunduh ulang bila lebih tua dari 24 jam; kalau unduhan gagal, cache lama
 tetap dipakai. Cache hanya dipakai ulang kalau sidiknya cocok dengan daftar yang
 ada (`filter.sig`), supaya filter basi tidak sempat dipasang.
+
+### Sertifikat HTTPS di AppImage (rilis ≤ 0.2.0)
+
+AppImage membawa tumpukan TLS dari mesin build (Ubuntu): `libgnutls`,
+`libsoup-3.0`, dan `libp11-kit`. `libp11-kit` itu mematok folder modul PKCS#11
+ke `/usr/lib/x86_64-linux-gnu/pkcs11`, dan AppImage **tidak** membawa
+`p11-kit-trust.so`. Di distro yang tidak memakai layout Debian — Arch memakai
+`/usr/lib/p11-kit-trust.so`, Fedora `/usr/lib64/pkcs11/` — GnuTLS tidak
+menemukan satu pun CA, sehingga **semua** situs HTTPS gagal dengan halaman
+"Unacceptable TLS certificate". Biner telanjang tidak terkena karena memakai
+pustaka TLS milik distro.
+
+Sejak 0.2.1, `src-tauri/src/lingkungan.rs` mendeteksi keadaan itu saat start
+(hanya bila berjalan dari AppImage dan folder modul Debian tidak ada) lalu
+menulis `~/.config/pkcs11/modules/perisai-trust.module` yang menunjuk modul
+trust sistem lewat path absolut. Berkas itu bisa dihapus kapan saja.
+
+Untuk 0.2.0 yang sudah terpasang, perbaikannya bisa dilakukan manual tanpa
+menunggu rilis baru:
+
+```bash
+mkdir -p ~/.config/pkcs11/modules
+modul=$(ls /usr/lib/p11-kit-trust.so /usr/lib64/p11-kit-trust.so \
+             /usr/lib/pkcs11/p11-kit-trust.so 2>/dev/null | head -1)
+printf 'module: %s\ntrust-policy: yes\n' "$modul" \
+  > ~/.config/pkcs11/modules/perisai-trust.module
+```
 
 ### Akselerasi perangkat keras
 

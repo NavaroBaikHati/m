@@ -3,6 +3,7 @@
 mod adblock;
 mod beranda;
 mod commands;
+mod lingkungan;
 mod pintasan;
 mod platform;
 mod tabs;
@@ -24,6 +25,10 @@ pub struct Database(pub Arc<Mutex<Storage>>);
 /// Argumen pertama yang bukan flag diperlakukan sebagai URL/alamat awal, jadi
 /// `cargo tauri dev -- http://localhost:8123/` bisa dipakai untuk pengujian.
 pub fn run() {
+    // Harus sebelum GTK/WebKit diinisialisasi: memperbaiki variabel lingkungan
+    // AppImage yang membuat semua sertifikat HTTPS ditolak.
+    lingkungan::rapikan();
+
     tauri::Builder::default()
         .setup(|app| {
             let window = app
