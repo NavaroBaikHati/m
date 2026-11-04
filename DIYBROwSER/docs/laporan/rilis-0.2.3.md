@@ -37,10 +37,12 @@ Penyebab yang tersisa ada di jalur render:
    jalan mundur: WebKit tidak boleh jatuh ke compositing perangkat lunak, jadi
    halaman berat berhenti menggambar dan tampak freeze.
 
-Bukti pendukung dari uji di mesin build: dengan WebKit dipaksa ke jalur render
-perangkat lunak, halaman `watch` YouTube membuat proses **segfault** setelah
-beberapa detik, sedangkan `example.com` normal. Artinya jalur render inilah yang
-rapuh pada halaman video, bukan jaringan atau filter.
+Bukti pendukung dari uji di mesin build: dengan `WAYLAND_DISPLAY` diarahkan ke
+socket Wayland yang tidak ada **dan** `GDK_BACKEND=x11` (kondisi yang meniru
+XWayland tanpa compositor), halaman `watch` YouTube membuat proses **segfault**
+setelah beberapa detik, sementara `example.com` normal. Itu artefak lingkungan
+uji, bukan kondisi pengguna, tetapi menunjukkan jalur render itulah yang rapuh
+pada halaman video — bukan jaringan, dan bukan filter.
 
 ## Perubahan
 
@@ -69,6 +71,14 @@ rapuh pada halaman video, bukan jaringan atau filter.
 - `cargo fmt --all --check` — lolos.
 - `cargo clippy --workspace --all-targets -- -D warnings` — lolos, 0 warning.
 - `npm --prefix ui run build` — lolos.
+- Biner rilis 0.2.3 dijalankan di Xvfb dengan `WAYLAND_DISPLAY` palsu dan
+  `GDK_BACKEND=x11`: stderr memuat baris deteksi (`lingkungan: sesi Wayland lewat
+  X11; renderer DMA-BUF dimatikan...`), jadi jalur deteksi benar-benar aktif di
+  biner yang dirilis.
+- Tiga varian (`biasa`, `PERISAI_TANPA_ADBLOCK=1`, `PERISAI_AKSELERASI=perangkat-lunak`)
+  memuat `youtube.com/watch?v=dQw4w9WgXcQ` dan **tetap hidup** setelah 14 detik
+  tanpa panic di log. UI tetap responsif: `Ctrl+T` setelah halaman video terbuka
+  langsung menampilkan tab baru dengan halaman beranda (screenshot diperiksa).
 
 ## Batasan
 
@@ -78,3 +88,8 @@ rapuh pada halaman video, bukan jaringan atau filter.
 - Kalau setelah ini YouTube masih tersendat, langkah pembeda ada di README:
   `PERISAI_AKSELERASI=perangkat-lunak` (uji driver) dan `PERISAI_TANPA_ADBLOCK=1`
   (uji filter). Hasil keduanya menentukan langkah berikutnya.
+- Pemutar video di mesin build menulis *"Your browser can't play this video"*
+  karena container ini tidak punya plugin GStreamer H.264. Itu bukan bug
+  Perisai: di Arch perlu `gst-plugins-good gst-plugins-bad gst-plugins-ugly
+  gst-libav`. Video tanpa codec diputar lewat jalur perangkat lunak atau gagal,
+  dan itu terasa sebagai lambat; bagian ini belum bisa diuji di sini.
