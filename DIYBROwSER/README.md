@@ -256,6 +256,24 @@ printf 'module: %s\ntrust-policy: yes\n' "$modul" \
   > ~/.config/pkcs11/modules/perisai-trust.module
 ```
 
+### AppImage membawa WebKit dan GStreamer sendiri
+
+AppImage bersifat mandiri: `linuxdeploy` ikut menyalin `libwebkit2gtk-4.1`
+(±95 MB), GTK, dan GStreamer **1.24.2** dari mesin build ke dalam paket, lalu
+`AppRun` menaruh folder itu paling depan di `LD_LIBRARY_PATH`. Pustaka itulah
+yang dipakai, bukan milik distro.
+
+Di distro bergulir seperti Arch (GStreamer 1.26), inti 1.24 memuat plugin
+`/usr/lib/gstreamer-1.0` milik host yang dibangun untuk 1.26; sebagian plugin
+decoder bisa gagal dimuat sehingga YouTube menulis *"Your browser can't play
+this video"*, dan jalur render memakai WebKit yang lebih tua daripada milik
+distro (terasa lebih lambat di Wayland).
+
+Diagnosis cepat: jalankan **biner telanjang** (`perisai-x.y.z-linux-x86_64`) —
+ia memakai pustaka distro. Kalau di sana video jalan dan halaman terasa lebih
+cepat, penyebabnya pembungkusan AppImage, bukan halaman atau content blocker.
+Cek juga decoder di host dengan `gst-inspect-1.0 | grep -E "avdec_h264|vp9dec"`.
+
 ### Akselerasi perangkat keras
 
 Sejak 0.2.3 kebijakannya `OnDemand` (bawaan WebKitGTK): GPU dipakai saat halaman
@@ -303,6 +321,29 @@ WebKitGTK memakai GStreamer untuk H.264/VP9. Di Arch pasang
 `gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav`.
 Video tanpa codec akan dipaksa ke jalur perangkat lunak atau gagal sama sekali,
 dan itu terasa sebagai lambat.
+
+### Resize, ukuran minimum, dan tiling compositor
+
+Anak `GtkFixed` dialokasikan berdasarkan `size_request`-nya, dan `GtkFixed`
+melaporkan ukuran anak terbesar sebagai ukuran minimum jendela. Dulu setiap
+webview memakai `size_request` seukuran jendela, jadi **ukuran minimum jendela
+selalu sama dengan ukuran jendelanya saat itu**: compositor tiling (Hyprland,
+sway, i3) memaksa ukuran baru, GTK menolak, dan isi tab terlihat terpotong.
+Sekarang request-nya 1×1 dan ukuran sebenarnya dipasang lewat
+`size_allocate` — langsung saat batas berubah, dan sekali lagi dari handler
+`size-allocate` (mode *after*) setiap kali GTK selesai menata wadah.
+
+Konsekuensinya jendela bisa dikecilkan sampai batas `minWidth`/`minHeight` di
+`tauri.conf.json` (640×400). Kalau suatu saat tata letak terlihat 1×1 atau
+menyusut, periksa `PENEMPATAN` dan handler `susun_ulang` di
+`src-tauri/src/platform/linux/mod.rs`.
+
+### Setelan WebKit hanya sekali per webview
+
+`terapkan_setelan` dipanggil saat webview dibuat, bukan di setiap perubahan
+batas. Menulis ulang kebijakan akselerasi perangkat keras dan warna latar pada
+webview yang sedang berjalan memaksa WebKit menyusun ulang compositing — pada
+resize cepat, pindah tab, atau saat panel dibuka itu terasa sebagai tersendat.
 
 ### Layar penuh dan garis progres
 

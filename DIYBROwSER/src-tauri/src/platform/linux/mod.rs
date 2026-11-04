@@ -29,6 +29,16 @@ thread_local! {
     /// Wadah milik kita. Objek GTK bukan `Send`, jadi hanya disimpan di thread
     /// utama dan hanya disentuh dari closure `with_webview`.
     static WADAH: RefCell<Option<gtk::Fixed>> = const { RefCell::new(None) };
+    /// Posisi/ukuran terakhir tiap webview di dalam [`WADAH`].
+    ///
+    /// `GtkFixed` mengalokasikan anak berdasarkan `size_request` milik anaknya,
+    /// dan ukuran itu ikut dilaporkan sebagai ukuran minimum jendela. Kalau
+    /// request-nya seukuran jendela, jendela tidak bisa dikecilkan: tiling
+    /// compositor (Hyprland, sway) memaksa ukuran baru, GTK menolaknya, dan isi
+    /// tab terlihat terpotong. Karena itu request dibuat 1×1 dan ukuran asli
+    /// dipasang langsung lewat `size_allocate`, lalu dipasang ulang setiap kali
+    /// wadah selesai dialokasikan.
+    static PENEMPATAN: RefCell<Vec<(gtk::Widget, gtk::Allocation)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Memindahkan webview chrome ke `GtkFixed` buatan kita. Webview tab yang
@@ -37,6 +47,9 @@ pub fn siapkan_wadah(app: &AppHandle, rect: Rect) -> Result<(), String> {
     let chrome = app
         .get_webview(LABEL_CHROME)
         .ok_or_else(|| format!("webview {LABEL_CHROME} tidak ditemukan"))?;
+    chrome
+        .with_webview(|platform| terapkan_setelan(&platform.inner()))
+        .map_err(|e| e.to_string())?;
     pindahkan(&chrome, rect)
 }
 
@@ -49,9 +62,7 @@ fn pindahkan(webview: &Webview, rect: Rect) -> Result<(), String> {
     webview
         .with_webview(move |platform| {
             let view = platform.inner();
-            let view = &view;
-            terapkan_setelan(view);
-            let widget: gtk::Widget = view.clone().upcast();
+            let widget: gtk::Widget = view.upcast();
             tempatkan(&widget, rect);
         })
         .map_err(|e| e.to_string())
@@ -106,7 +117,10 @@ fn tempatkan(widget: &gtk::Widget, rect: Rect) {
             .and_then(|p| p.dynamic_cast::<gtk::Box>().ok())
         {
             Some(vbox) => {
-                vbox.add(&wadah);
+                // Wadah harus mengisi seluruh jendela; ia tidak lagi ikut
+                // menentukan ukuran minimum jendela karena anak-anaknya hanya
+                // meminta 1×1.
+                vbox.pack_start(&wadah, true, true, 0);
                 wadah.show();
             }
             None => eprintln!("wadah GtkBox window tidak ditemukan; tata letak tab bisa salah"),
@@ -126,9 +140,18 @@ fn tempatkan(widget: &gtk::Widget, rect: Rect) {
     let skala = f64::from(widget.scale_factor());
     let (x, y) = rect.position.to_logical::<i32>(skala).into();
     let (lebar, tinggi) = rect.size.to_logical::<i32>(skala).into();
+    let alokasi = gtk::Allocation::new(x, y, lebar, tinggi);
 
-    widget.set_size_request(lebar, tinggi);
+    widget.set_size_request(1, 1);
     wadah.move_(widget, x, y);
+    widget.size_allocate(&alokasi);
+    PENEMPATAN.with(|daftar| {
+        let mut daftar = daftar.borrow_mut();
+        match daftar.iter_mut().find(|(lain, _)| lain == widget) {
+            Some(slot) => slot.1 = alokasi,
+            None => daftar.push((widget.clone(), alokasi)),
+        }
+    });
     widget.show();
 }
 
@@ -137,8 +160,43 @@ fn wadah() -> gtk::Fixed {
         return fixed;
     }
     let fixed = gtk::Fixed::new();
+    // Setelah GTK selesai mengalokasikan wadah (memakai request 1×1 tadi),
+    // pasang lagi ukuran sebenarnya. Tanpa ini isi tab menyusut ke 1×1 tiap
+    // kali jendela berubah ukuran.
+    unsafe {
+        gtk::glib::gobject_ffi::g_signal_connect_data(
+            fixed.as_ptr() as *mut _,
+            c"size-allocate".as_ptr(),
+            Some(std::mem::transmute::<*const (), unsafe extern "C" fn()>(
+                susun_ulang as *const (),
+            )),
+            std::ptr::null_mut(),
+            None,
+            gtk::glib::gobject_ffi::G_CONNECT_AFTER,
+        );
+    }
     WADAH.with(|slot| *slot.borrow_mut() = Some(fixed.clone()));
     fixed
+}
+
+/// Memasang ulang ukuran webview setelah GTK selesai menata anak `GtkFixed`.
+///
+/// `size-allocate` adalah sinyal RUN_LAST, jadi handler biasa berjalan sebelum
+/// `GtkFixed` menata anak-anaknya (yang request-nya 1×1). gtk-rs 0.18 tidak
+/// menyediakan `connect_after_*` untuk sinyal ini, jadi handler dipasang lewat
+/// `g_signal_connect_after`. Aman: GTK memanggilnya di thread utama yang sama,
+/// sehingga thread-local `PENEMPATAN` bisa dibaca.
+unsafe extern "C" fn susun_ulang(
+    _widget: *mut gtk::ffi::GtkWidget,
+    _alokasi: *mut gtk::gdk::ffi::GdkRectangle,
+    _data: gtk::glib::ffi::gpointer,
+) {
+    let daftar: Vec<(gtk::Widget, gtk::Allocation)> = PENEMPATAN.with(|slot| slot.borrow().clone());
+    for (widget, alokasi) in daftar {
+        if widget.parent().is_some() {
+            widget.size_allocate(&alokasi);
+        }
+    }
 }
 
 /// Mengompilasi dan memasang content blocker; lihat `filter.rs`.
@@ -181,6 +239,11 @@ pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), Strin
     webview
         .with_webview(move |platform| {
             let view = platform.inner();
+            // Setelan WebKit cukup sekali per webview. Menulis ulang kebijakan
+            // akselerasi tiap kali batas berubah (resize, pindah tab, buka
+            // panel) memaksa WebKit menyusun ulang compositing dan membuat
+            // halaman terasa tersendat.
+            terapkan_setelan(&view);
 
             let app_masuk = app.clone();
             let id_masuk = id.clone();
