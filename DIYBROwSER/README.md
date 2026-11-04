@@ -32,10 +32,19 @@ Versi 0.2.2. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
   blocker WebKit (130.066 aturan), dipasang sebelum halaman dimuat, plus
   scriptlet khusus YouTube dan aturan tambahan Perisai. Bisa dimatikan per situs
   lewat panel di address bar.
-- **Tab manager vertikal** dengan avatar situs, indikator memuat, nomor tab, dan
-  sidebar yang bisa diciutkan.
-- **Address bar pill** yang menampilkan host tebal + jalur samar saat tidak
-  difokuskan, tombol Perlindungan, dan tombol bookmark.
+- **Tab manager vertikal** dengan monogram situs, indikator memuat, dan sidebar
+  yang bisa diciutkan.
+- **Address bar tipis ala Arc** yang menampilkan host tebal + jalur samar saat
+  tidak difokuskan, melebar saat diklik, dengan tombol Perlindungan dan
+  bookmark.
+- **Garis progres muat** di bawah toolbar, memakai
+  `estimated-load-progress` WebKitGTK (bukan animasi karangan), plus tombol
+  berhenti saat halaman masih dimuat.
+- **Layar penuh sungguhan** untuk video HTML5: toolbar dan sidebar disembunyikan,
+  isi tab memenuhi jendela, dan jendela ikut penuh layar.
+- **Panel melayang** (Perlindungan, bookmark/riwayat, unduhan, menu) berupa kartu
+  ramping yang menutup sendiri saat pindah halaman atau menekan `Esc`.
+- **Palet monokrom hitam** — tanpa aksen ungu; tema bawaan gelap.
 - **Halaman tab baru** dengan pencarian dan pintasan situs favorit.
 - **Bookmark, riwayat, unduhan, zoom per situs, pemulihan sesi, tema
   sistem/terang/gelap.**
@@ -49,23 +58,22 @@ Versi 0.2.2. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 `Ctrl+K` menu · `Ctrl+=` / `Ctrl+-` / `Ctrl+0` zoom · `Alt+←` / `Alt+→`
 mundur/maju · `Ctrl+Q` keluar.
 
-## Paket terpasang (rilis 0.2.1)
+## Paket terpasang (rilis 0.3.0)
 
-Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit) dan di GitHub
-Release `v0.2.1`: AppImage, `.deb`, `.rpm`, biner telanjang, dan `SHA256SUMS`.
+Hasil `cargo tauri build` ada di `rilis/` (tidak di-commit): AppImage, `.deb`,
+biner telanjang, dan `SHA256SUMS`.
 
 **Arch Linux** — pakai AppImage, karena `.deb`/`.rpm` bukan format pacman:
 
 ```bash
-chmod +x Perisai_0.2.1_amd64.AppImage
-./Perisai_0.2.1_amd64.AppImage          # tambahkan fuse2 kalau diminta
+chmod +x Perisai_0.3.0_amd64.AppImage
+./Perisai_0.3.0_amd64.AppImage          # tambahkan fuse2 kalau diminta
 ```
 
-Biner telanjang juga bisa langsung dijalankan (`./perisai-0.2.1-linux-x86_64`)
+Biner telanjang juga bisa langsung dijalankan (`./perisai-0.3.0-linux-x86_64`)
 selama `webkit2gtk-4.1` dan `gtk3` terpasang.
 
-**Debian/Ubuntu:** `sudo apt install ./Perisai_0.2.1_amd64.deb`
-**Fedora:** `sudo dnf install ./Perisai-0.2.1-1.x86_64.rpm`
+**Debian/Ubuntu:** `sudo apt install ./Perisai_0.3.0_amd64.deb`
 
 Setelah terpasang, Perisai muncul di menu aplikasi (`Name=Perisai`) atau bisa
 dijalankan dengan perintah `perisai`.
@@ -295,6 +303,21 @@ WebKitGTK memakai GStreamer untuk H.264/VP9. Di Arch pasang
 `gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav`.
 Video tanpa codec akan dipaksa ke jalur perangkat lunak atau gagal sama sekali,
 dan itu terasa sebagai lambat.
+
+### Layar penuh dan garis progres
+
+WebKitGTK menyerahkan layar penuh HTML5 ke aplikasi lewat sinyal
+`enter-fullscreen`/`leave-fullscreen`; tanpa penanganan, video hanya memenuhi
+kotak tab dan toolbar tetap terlihat. `platform/linux/mod.rs` (`pantau`)
+menyambungkan kedua sinyal itu ke `TabManager::atur_layar_penuh`: isi tab
+memakai seluruh jendela, webview chrome disembunyikan, dan jendela ikut
+`set_fullscreen(true)`. Kalau compositor mengabaikan permintaan fullscreen,
+bagian pertama tetap bekerja karena batas webview dihitung sendiri.
+
+Progres muat diambil dari properti `estimated-load-progress` dan dikirim lewat
+event `tab:progres`. Perubahan di bawah 1% tidak dikirim supaya IPC tidak
+dibanjiri ratusan event per halaman. Platform lain belum punya sumber progres,
+jadi UI memakai garis bergerak sendiri sebagai cadangan.
 
 ### Tinggi chrome dan sidebar
 

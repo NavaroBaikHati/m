@@ -23,7 +23,7 @@ use gtk::prelude::*;
 use tauri::{AppHandle, Manager, Rect, Webview};
 use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
 
-use crate::tabs::LABEL_CHROME;
+use crate::tabs::{TabManager, LABEL_CHROME};
 
 thread_local! {
     /// Wadah milik kita. Objek GTK bukan `Send`, jadi hanya disimpan di thread
@@ -166,6 +166,63 @@ pub fn lepas_filter(webview: &Webview) {
     let _ = webview.with_webview(|platform| {
         filter::lepas_dari(&platform.inner());
     });
+}
+
+/// Memantau satu webview tab: layar penuh HTML5 dan kemajuan muat halaman.
+///
+/// WebKitGTK hanya mengirim sinyal `enter-fullscreen`/`leave-fullscreen`; tanpa
+/// penanganan, aplikasi harus menentukan sendiri apa artinya layar penuh — dan
+/// kalau tidak, video hanya memenuhi kotak tab sehingga toolbar tetap terlihat.
+/// Progres muat diambil dari properti `estimated-load-progress` supaya garis
+/// progres menampilkan angka sebenarnya, bukan animasi karangan.
+///
+/// Semua callback dipanggil di thread utama GTK, jadi aman menyentuh webview.
+pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), String> {
+    webview
+        .with_webview(move |platform| {
+            let view = platform.inner();
+
+            let app_masuk = app.clone();
+            let id_masuk = id.clone();
+            view.connect_enter_fullscreen(move |_| {
+                if let Some(tabs) = app_masuk.try_state::<TabManager>() {
+                    if let Err(e) = tabs.atur_layar_penuh(&id_masuk, true) {
+                        eprintln!("gagal masuk layar penuh: {e}");
+                    }
+                }
+                // Tandai sudah ditangani supaya WebKit tidak mengambil alih.
+                true
+            });
+
+            let app_keluar = app.clone();
+            let id_keluar = id.clone();
+            view.connect_leave_fullscreen(move |_| {
+                if let Some(tabs) = app_keluar.try_state::<TabManager>() {
+                    if let Err(e) = tabs.atur_layar_penuh(&id_keluar, false) {
+                        eprintln!("gagal keluar layar penuh: {e}");
+                    }
+                }
+                true
+            });
+
+            let app_progres = app.clone();
+            let id_progres = id.clone();
+            // Properti ini berubah sangat sering. Mengirim event tiap perubahan
+            // (bisa ratusan per halaman) hanya membebani IPC tanpa terlihat
+            // bedanya; 1% sudah lebih halus daripada yang bisa dipersepsi.
+            let terakhir = std::cell::Cell::new(-1.0_f64);
+            view.connect_notify_local(Some("estimated-load-progress"), move |view, _| {
+                let nilai = view.estimated_load_progress();
+                if nilai < 1.0 && (nilai - terakhir.get()).abs() < 0.01 {
+                    return;
+                }
+                terakhir.set(nilai);
+                if let Some(tabs) = app_progres.try_state::<TabManager>() {
+                    tabs.laporkan_progres(&id_progres, nilai);
+                }
+            });
+        })
+        .map_err(|e| e.to_string())
 }
 
 /// Memasang pintasan keyboard lewat handler GTK; lihat `pintasan.rs`.

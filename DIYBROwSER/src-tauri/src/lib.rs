@@ -128,6 +128,7 @@ pub fn run() {
             commands::mundur,
             commands::maju,
             commands::muat_ulang,
+            commands::hentikan,
             commands::status_halaman,
             commands::atur_panel,
             commands::atur_perlindungan,

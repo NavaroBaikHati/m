@@ -27,15 +27,19 @@ use crate::adblock::{Adblock, Perlindungan};
 
 /// Tinggi chrome browser (toolbar) dalam logical pixel.
 /// Harus sama dengan variabel `--tinggi-chrome` di `ui/src/app.css`.
-pub const TINGGI_CHROME: f64 = 52.0;
+pub const TINGGI_CHROME: f64 = 40.0;
 
 /// Lebar sidebar vertikal saat terbuka, dalam logical pixel.
 /// Harus sama dengan variabel `--lebar-sidebar` di `ui/src/app.css`.
-pub const LEBAR_SIDEBAR: f64 = 232.0;
+pub const LEBAR_SIDEBAR: f64 = 224.0;
 
 /// Nama event yang dipakai Rust untuk memberi tahu webview chrome.
 pub const EVENT_NAVIGASI: &str = "tab:navigasi";
 pub const EVENT_UNDUHAN: &str = "unduhan:berubah";
+/// Kemajuan muat halaman (0.0–1.0), dipakai garis progres di bawah toolbar.
+pub const EVENT_PROGRES: &str = "tab:progres";
+/// Halaman masuk/keluar layar penuh; chrome UI ikut disembunyikan.
+pub const EVENT_LAYAR_PENUH: &str = "tab:layar-penuh";
 /// Dikirim saat daftar tab berubah karena aksi backend (pintasan keyboard).
 pub const EVENT_DAFTAR: &str = "tab:daftar";
 
@@ -68,6 +72,13 @@ pub struct DaftarTab {
 }
 
 /// Perubahan sebagian: hanya field yang berubah yang dikirim.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PeristiwaProgres {
+    tab: String,
+    progres: f64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PeristiwaNavigasi {
@@ -106,6 +117,8 @@ pub struct TabManager {
     zoom_aktif: Mutex<f64>,
     /// Lebar area panel samping yang dipesan UI (0 = tidak ada panel).
     panel: Mutex<f64>,
+    /// Tab aktif sedang memutar video layar penuh (chrome disembunyikan).
+    layar_penuh: Mutex<bool>,
 }
 
 impl TabManager {
@@ -137,6 +150,7 @@ impl TabManager {
             ditutup: Mutex::new(Vec::new()),
             zoom_aktif: Mutex::new(1.0),
             panel: Mutex::new(0.0),
+            layar_penuh: Mutex::new(false),
         }
     }
 
@@ -256,6 +270,9 @@ impl TabManager {
         // Di Linux ukuran di atas diabaikan (lihat src/platform/linux), jadi
         // batas asli selalu ditetapkan lewat helper platform.
         crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+        // Layar penuh HTML5 dan progres muat hanya bisa dipantau dari webview
+        // platform; helper ini no-op di sistem operasi lain.
+        crate::platform::pantau(&webview, self.app.clone(), id.clone())?;
 
         // Perlindungan dipasang sebelum halaman pertama dimuat bila filter sudah
         // siap. Kalau belum, `pasang_perlindungan` menyusul setelah selesai.
@@ -323,6 +340,11 @@ impl TabManager {
 
     /// Mengaktifkan tab `id` dan menampilkannya kembali.
     pub fn pilih(&self, id: &str) -> Result<(), String> {
+        // Berpindah tab saat video layar penuh harus mengembalikan chrome,
+        // kalau tidak toolbar tetap tersembunyi di tab berikutnya.
+        if self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false) {
+            self.keluar_layar_penuh()?;
+        }
         let lama = {
             let isi = self.isi.lock().map_err(|_| "state tab rusak".to_string())?;
             if !isi.tabs.iter().any(|tab| tab.id == id) {
@@ -443,8 +465,35 @@ impl TabManager {
         if terakhir {
             self.tab_baru()?;
         }
+        // Tab yang sedang diputar layar penuh tidak mungkin dipakai lagi
+        // setelah ditutup, jadi chrome harus muncul kembali.
+        if self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false) {
+            self.keluar_layar_penuh()?;
+        }
         self.simpan_sesi();
         beri_tahu_daftar(&self.app);
+        Ok(())
+    }
+
+    /// Mengembalikan tampilan normal tanpa menunggu sinyal `leave-fullscreen`.
+    fn keluar_layar_penuh(&self) -> Result<(), String> {
+        if let Ok(mut slot) = self.layar_penuh.lock() {
+            *slot = false;
+        }
+        let _ = self.window.set_fullscreen(false);
+        if let Some(chrome) = self.app.get_webview(LABEL_CHROME) {
+            crate::platform::atur_batas(&chrome, self.rect_penuh()?)?;
+            let _ = chrome.show();
+        }
+        if let Some(webview) = self.webview_aktif() {
+            crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+            let _ = webview.show();
+            let _ = webview.set_focus();
+        }
+        let target = EventTarget::Webview {
+            label: LABEL_CHROME.to_string(),
+        };
+        let _ = self.app.emit_to(target, EVENT_LAYAR_PENUH, false);
         Ok(())
     }
 
@@ -613,7 +662,8 @@ impl TabManager {
             .lock()
             .ok()
             .and_then(|db| db.get_pengaturan("tema").ok().flatten())
-            .unwrap_or_else(|| "sistem".into())
+            // Bawaan gelap: palet monokrom Perisai dirancang untuk latar hitam.
+            .unwrap_or_else(|| "gelap".into())
     }
 
     pub fn atur_tema(&self, tema: &str) -> Result<String, String> {
@@ -658,7 +708,14 @@ impl TabManager {
     }
 
     /// Area isi tab: di bawah chrome, di kanan sidebar, dikurangi area panel.
+    ///
+    /// Saat halaman meminta layar penuh, area isi memakai seluruh jendela dan
+    /// chrome UI disembunyikan, jadi video tidak lagi terpotong toolbar.
     pub fn rect_konten(&self) -> Result<Rect, String> {
+        let layar_penuh = self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false);
+        if layar_penuh {
+            return self.rect_penuh();
+        }
         let (lebar, tinggi) = self.ukuran_logis()?;
         let awal = self.sidebar_lebar()?;
         let panel = self.panel_lebar();
@@ -689,6 +746,76 @@ impl TabManager {
             crate::platform::atur_batas(&webview, self.rect_konten()?)?;
         }
         Ok(())
+    }
+
+    /// Masuk/keluar layar penuh untuk tab `id` (dipicu sinyal WebKit).
+    ///
+    /// WebKitGTK menyerahkan layar penuh HTML5 ke aplikasi: tanpa penanganan,
+    /// video hanya memenuhi area isi tab dan toolbar tetap menutupi bagian
+    /// atas. Di sini tab dinaikkan ke seluruh jendela dan webview chrome
+    /// disembunyikan, jadi hasilnya layar penuh seperti browser lain.
+    pub fn atur_layar_penuh(&self, id: &str, penuh: bool) -> Result<(), String> {
+        {
+            let mut slot = self
+                .layar_penuh
+                .lock()
+                .map_err(|_| "state layar penuh rusak".to_string())?;
+            *slot = penuh;
+        }
+        let Some(webview) = self.app.get_webview(id) else {
+            return Ok(());
+        };
+
+        // Jendela ikut penuh layar supaya bilah judul sistem tidak tersisa di
+        // atas video. WebKitGTK sendiri tidak melakukannya untuk kita.
+        let _ = self.window.set_fullscreen(penuh);
+
+        if penuh {
+            // Tab yang meminta layar penuh selalu jadi tab aktif.
+            if self.label_aktif().as_deref() != Some(id) {
+                if let Some(lama) = self.label_aktif() {
+                    if let Some(lama) = self.app.get_webview(&lama) {
+                        let _ = lama.hide();
+                    }
+                }
+                if let Ok(mut isi) = self.isi.lock() {
+                    isi.aktif = Some(id.to_string());
+                }
+            }
+            crate::platform::atur_batas(&webview, self.rect_penuh()?)?;
+            if let Some(chrome) = self.app.get_webview(LABEL_CHROME) {
+                let _ = chrome.hide();
+            }
+            let _ = webview.show();
+            let _ = webview.set_focus();
+        } else {
+            if let Some(chrome) = self.app.get_webview(LABEL_CHROME) {
+                crate::platform::atur_batas(&chrome, self.rect_penuh()?)?;
+                let _ = chrome.show();
+            }
+            crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+            let _ = webview.show();
+            let _ = webview.set_focus();
+        }
+
+        let target = EventTarget::Webview {
+            label: LABEL_CHROME.to_string(),
+        };
+        let _ = self.app.emit_to(target, EVENT_LAYAR_PENUH, penuh);
+        beri_tahu_daftar(&self.app);
+        Ok(())
+    }
+
+    /// Meneruskan kemajuan muat halaman ke chrome UI.
+    pub fn laporkan_progres(&self, id: &str, progres: f64) {
+        let target = EventTarget::Webview {
+            label: LABEL_CHROME.to_string(),
+        };
+        let peristiwa = PeristiwaProgres {
+            tab: id.to_string(),
+            progres: progres.clamp(0.0, 1.0),
+        };
+        let _ = self.app.emit_to(target, EVENT_PROGRES, peristiwa);
     }
 
     fn panel_lebar(&self) -> f64 {

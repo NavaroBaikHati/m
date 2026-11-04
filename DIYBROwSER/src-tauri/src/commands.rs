@@ -95,6 +95,12 @@ pub async fn muat_ulang(tabs: State<'_, TabManager>) -> Result<(), String> {
     webview_aktif(&tabs)?.reload().map_err(|e| e.to_string())
 }
 
+/// Menghentikan pemuatan tab aktif; dipakai tombol yang sama dengan muat ulang.
+#[tauri::command]
+pub async fn hentikan(tabs: State<'_, TabManager>) -> Result<(), String> {
+    jalankan_skrip(&tabs, "window.stop()")
+}
+
 /// Status halaman (`id` opsional; kalau kosong memakai tab aktif).
 #[tauri::command]
 pub async fn status_halaman(

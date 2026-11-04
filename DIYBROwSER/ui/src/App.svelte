@@ -18,7 +18,7 @@
     aktif: null,
     sidebarTerbuka: true,
     zoom: 1,
-    tema: "sistem",
+    tema: "gelap",
   });
   let status = $state<StatusHalaman | null>(null);
   let isiAlamat = $state("");
@@ -32,15 +32,21 @@
   let unduhanList = $state<Unduhan[]>([]);
   let cariPustaka = $state("");
   let mesinPencarian = $state<PilihanMesin[]>([]);
+  /** Kemajuan muat per tab (0..1); tidak ada entri berarti belum ada laporan. */
+  let progres = $state<Record<string, number>>({});
+  /** Halaman sedang layar penuh: chrome disembunyikan oleh Rust. */
+  let layarPenuh = $state(false);
 
   let inputAlamat: HTMLInputElement;
   let permintaanStatus = 0;
+  let jadwalStatus: ReturnType<typeof setTimeout> | undefined;
 
   let tabAktif = $derived(daftar.tabs.find((tab) => tab.id === daftar.aktif));
   let urlAktif = $derived(status?.url || tabAktif?.url || "");
   let beranda = $derived(status?.beranda ?? urlAktif.startsWith("file:"));
   let isiMemuat = $derived(daftar.aktif ? memuat[daftar.aktif] === true : false);
   let jumlahTab = $derived(daftar.tabs.length);
+  let nilaiProgres = $derived(daftar.aktif ? progres[daftar.aktif] : undefined);
 
   const namaTema = $derived.by(() => {
     const tema = status?.tema ?? daftar.tema;
@@ -70,10 +76,18 @@
     if (!sedangMengetik) isiAlamat = beranda ? "" : urlAktif;
   });
 
-  // Panel samping memesan ruang di kanan; tanpa itu panel tertutup webview tab.
+  // Panel memesan ruang di kanan secukupnya; webview tab adalah child native
+  // yang selalu berada di atas chrome, jadi kartu melayang tidak bisa menutupi
+  // halaman. Kartunya dibuat ramping supaya halaman hanya menyempit sedikit.
   $effect(() => {
-    const lebarPanel = panel === "tidak" ? 0 : panel === "pustaka" ? 424 : 360;
+    const lebarPanel = panel === "tidak" ? 0 : panel === "pustaka" ? 372 : 344;
     void api.aturPanel(lebarPanel).catch((error) => (galat = pesanGalat(error)));
+  });
+
+  // Pindah halaman berarti urusan panel sudah selesai.
+  $effect(() => {
+    void urlAktif;
+    panel = "tidak";
   });
 
   $effect(() => {
@@ -102,6 +116,13 @@
           api.onPerintah(tanganiPerintah),
           api.onUnduhan(() => void segarkanUnduhan()),
           api.onPerlindungan(() => void segarkanStatus()),
+          api.onProgres((peristiwa) => {
+            progres = { ...progres, [peristiwa.tab]: peristiwa.progres };
+          }),
+          api.onLayarPenuh((penuh) => {
+            layarPenuh = penuh;
+            if (penuh) panel = "tidak";
+          }),
           api.onDaftarBerubah(() => {
             void segarkanDaftar();
             void segarkanStatus();
@@ -114,9 +135,22 @@
       }
     })();
 
+    const tombol = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (panel !== "tidak") {
+        panel = "tidak";
+        event.preventDefault();
+      } else if (sedangMengetik) {
+        sedangMengetik = false;
+        inputAlamat?.blur();
+      }
+    };
+    window.addEventListener("keydown", tombol);
+
     return () => {
       dibatalkan = true;
       bersih.forEach((f) => f());
+      window.removeEventListener("keydown", tombol);
     };
   });
 
@@ -128,9 +162,16 @@
     }
     if (peristiwa.memuat !== undefined) {
       memuat = { ...memuat, [peristiwa.tab]: peristiwa.memuat };
+      if (peristiwa.memuat) {
+        progres = { ...progres, [peristiwa.tab]: 0 };
+      } else {
+        const sisa = { ...progres };
+        delete sisa[peristiwa.tab];
+        progres = sisa;
+      }
     }
     if (peristiwa.tab === daftar.aktif) {
-      void segarkanStatus();
+      segarkanStatusTertunda();
       if (peristiwa.memuat === false) {
         // Judul halaman biasanya datang setelah muat selesai.
         setTimeout(() => void segarkanDaftar(), 250);
@@ -144,6 +185,16 @@
     else if (perintah === "unduhan") void bukaPanel("unduhan");
     else if (perintah === "riwayat") void bukaPustaka("riwayat");
     else if (perintah === "menu") void bukaPanel("menu");
+  }
+
+  /**
+   * Satu halaman memicu beberapa event (mulai navigasi, mulai muat, judul,
+   * selesai). Status hanya diminta sekali per gelombang, supaya query basis
+   * data dan pencarian selector tidak diulang-ulang tanpa guna.
+   */
+  function segarkanStatusTertunda() {
+    clearTimeout(jadwalStatus);
+    jadwalStatus = setTimeout(() => void segarkanStatus(), 120);
   }
 
   async function segarkanStatus() {
@@ -198,6 +249,11 @@
     sedangMengetik = true;
     inputAlamat?.focus();
     inputAlamat?.select();
+  }
+
+  function hentikan() {
+    void jalankan(api.hentikan());
+    if (daftar.aktif) memuat = { ...memuat, [daftar.aktif]: false };
   }
 
   function pilihTab(id: string) {
@@ -341,14 +397,6 @@
     }
   }
 
-  /** Warna avatar tab diturunkan dari host, supaya situs yang sama selalu sama. */
-  function warnaTab(url: string): string {
-    const host = judulTab(url);
-    let hash = 0;
-    for (const huruf of host) hash = (hash * 31 + huruf.charCodeAt(0)) % 360;
-    return `hsl(${hash} 62% 52%)`;
-  }
-
   function inisial(url: string, judul: string): string {
     if (url.startsWith("file:")) return "P";
     const host = judulTab(url).replace(/^www\./, "");
@@ -371,7 +419,7 @@
   const lencanaShield = $derived(status?.perlindungan);
 </script>
 
-<div class="aplikasi">
+<div class="aplikasi" class:layar-penuh={layarPenuh}>
   {#if daftar.sidebarTerbuka}
     <aside class="sidebar">
       <div class="sidebar-kepala">
@@ -380,24 +428,18 @@
             <path
               d="M12 2.6 4.8 5.6v5.3c0 4.7 3 8.4 7.2 10 4.2-1.6 7.2-5.3 7.2-10V5.6L12 2.6Z"
               fill="none"
-              stroke="url(#perisai-grad)"
-              stroke-width="1.8"
+              stroke="currentColor"
+              stroke-width="1.7"
               stroke-linejoin="round"
             />
             <path
               d="m9 12 2.1 2.1 4-4.2"
               fill="none"
-              stroke="url(#perisai-grad)"
-              stroke-width="1.8"
+              stroke="currentColor"
+              stroke-width="1.7"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
-            <defs>
-              <linearGradient id="perisai-grad" x1="4" y1="2" x2="20" y2="21">
-                <stop offset="0" stop-color="var(--aksen)" />
-                <stop offset="1" stop-color="var(--aksen-2)" />
-              </linearGradient>
-            </defs>
           </svg>
           <b>Perisai</b>
         </span>
@@ -440,7 +482,7 @@
               }
             }}
           >
-            <span class="avatar" style:background={warnaTab(tab.url)} aria-hidden="true">
+            <span class="avatar" aria-hidden="true">
               {#if memuat[tab.id]}
                 <span class="denyut"></span>
               {:else}
@@ -547,18 +589,23 @@
         <button type="button" title="Maju (Alt+→)" aria-label="Maju" onclick={() => void jalankan(api.maju())}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5 11.5 8 6 13.5" /></svg>
         </button>
-        <button
-          type="button"
-          title="Muat ulang (Ctrl+R)"
-          aria-label="Muat ulang"
-          class:memuat={isiMemuat}
-          onclick={() => void jalankan(api.muatUlang())}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M13 8a5 5 0 1 1-1.6-3.7" />
-            <path d="M13 2.4v3.2h-3.2" />
-          </svg>
-        </button>
+        {#if isiMemuat}
+          <button type="button" title="Hentikan pemuatan" aria-label="Hentikan" onclick={hentikan}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 4.6l6.8 6.8M11.4 4.6l-6.8 6.8" /></svg>
+          </button>
+        {:else}
+          <button
+            type="button"
+            title="Muat ulang (Ctrl+R)"
+            aria-label="Muat ulang"
+            onclick={() => void jalankan(api.muatUlang())}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M13 8a5 5 0 1 1-1.6-3.7" />
+              <path d="M13 2.4v3.2h-3.2" />
+            </svg>
+          </button>
+        {/if}
       </div>
 
       <form class="alamat" class:fokus={sedangMengetik} onsubmit={kirim}>
@@ -643,6 +690,16 @@
           </svg>
         </button>
       </div>
+
+      {#if isiMemuat}
+        <div class="progres" class:tak-tentu={nilaiProgres === undefined} aria-hidden="true">
+          <span
+            style:width={nilaiProgres === undefined
+              ? undefined
+              : `${Math.max(3, Math.min(100, nilaiProgres * 100))}%`}
+          ></span>
+        </div>
+      {/if}
     </header>
 
     {#if jumlahTab === 0}
@@ -733,7 +790,7 @@
       {#if pustakaTab === "bookmark"}
         {#each bookmarkTersaring as item (item.url)}
           <button type="button" class="baris-panel" onclick={() => bukaUrl(item.url)}>
-            <span class="avatar kecil" style:background={warnaTab(item.url)}>{inisial(item.url, item.judul)}</span>
+            <span class="avatar kecil">{inisial(item.url, item.judul)}</span>
             <span class="teks-panel">
               <strong>{item.judul || judulTab(item.url)}</strong>
               <small>{item.url}</small>
@@ -745,7 +802,7 @@
       {:else}
         {#each riwayatTersaring as item (item.url)}
           <button type="button" class="baris-panel" onclick={() => bukaUrl(item.url)}>
-            <span class="avatar kecil" style:background={warnaTab(item.url)}>{inisial(item.url, item.judul)}</span>
+            <span class="avatar kecil">{inisial(item.url, item.judul)}</span>
             <span class="teks-panel">
               <strong>{item.judul || judulTab(item.url)}</strong>
               <small>{judulTab(item.url)} · {waktuRelatif(item.dikunjungi)}</small>
@@ -853,6 +910,13 @@
   .aplikasi {
     display: flex;
     height: 100vh;
+    transition: opacity 120ms ease-out;
+  }
+
+  /* Rust menyembunyikan webview chrome saat video layar penuh; kelas ini
+     mencegah chrome sempat berkedip sebelum perintah itu tiba. */
+  .aplikasi.layar-penuh {
+    opacity: 0;
   }
 
   /* ---------- sidebar + tab manager ---------- */
@@ -869,9 +933,9 @@
   .sidebar-kepala {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 1px;
     height: var(--tinggi-chrome);
-    padding: 0 10px 0 12px;
+    padding: 0 6px 0 10px;
   }
 
   .merek {
@@ -885,25 +949,27 @@
   .merek b {
     overflow: hidden;
     color: var(--teks);
-    font-size: 13px;
+    font-size: 11.5px;
     font-weight: 650;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
 
   .lambang {
     flex: none;
-    width: 20px;
-    height: 20px;
+    width: 17px;
+    height: 17px;
+    color: var(--teks);
   }
 
   .daftar-tab {
     display: flex;
     flex: 1;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     overflow-y: auto;
-    padding: 4px 8px 12px;
+    padding: 3px 7px 10px;
   }
 
   .tab {
@@ -911,10 +977,10 @@
     display: flex;
     flex: none;
     align-items: center;
-    gap: 9px;
-    height: 40px;
-    padding: 0 6px 0 8px;
-    border-radius: 12px;
+    gap: 8px;
+    height: 34px;
+    padding: 0 4px 0 7px;
+    border-radius: 9px;
     color: var(--teks);
     cursor: default;
     transition: background 130ms ease-out, box-shadow 130ms ease-out;
@@ -925,13 +991,13 @@
   }
 
   .tab:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--aksen) 55%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--teks) 34%, transparent);
     outline-offset: -1px;
   }
 
   .tab.aktif {
     background: var(--kartu);
-    box-shadow: 0 1px 2px rgba(15, 12, 30, 0.08), 0 8px 20px -14px rgba(15, 12, 30, 0.5);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 
   .tab.aktif::before {
@@ -939,9 +1005,9 @@
     top: 9px;
     bottom: 9px;
     left: 0;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: linear-gradient(180deg, var(--aksen), var(--aksen-2));
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: var(--teks);
     content: "";
   }
 
@@ -949,18 +1015,20 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 7px;
-    color: #fff;
-    font-size: 11px;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--garis);
+    border-radius: 6px;
+    background: var(--kartu-lembut);
+    color: var(--samar);
+    font-size: 10px;
     font-weight: 650;
   }
 
   .avatar.kecil {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
+    width: 19px;
+    height: 19px;
+    font-size: 9.5px;
   }
 
   .avatar.netral {
@@ -1003,7 +1071,7 @@
 
   .tab-judul {
     overflow: hidden;
-    font-size: 12.5px;
+    font-size: 12px;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1012,7 +1080,7 @@
   .tab-host {
     overflow: hidden;
     color: var(--samar);
-    font-size: 10.5px;
+    font-size: 10px;
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1078,29 +1146,30 @@
   }
 
   .chrome {
+    position: relative;
     display: flex;
     flex: none;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     height: var(--tinggi-chrome);
-    padding: 0 12px;
+    padding: 0 7px;
     background: var(--chrome);
     border-bottom: 1px solid var(--garis);
   }
 
   .tombol {
     display: flex;
-    gap: 2px;
+    gap: 1px;
   }
 
   button {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 0;
-    border-radius: 9px;
+    border-radius: 7px;
     background: transparent;
     color: var(--teks);
     cursor: pointer;
@@ -1112,13 +1181,13 @@
   }
 
   button.ikon.aktif {
-    background: color-mix(in srgb, var(--aksen) 16%, transparent);
-    color: var(--aksen);
+    background: color-mix(in srgb, var(--teks) 12%, transparent);
+    color: var(--teks);
   }
 
   button svg {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.8;
@@ -1126,33 +1195,57 @@
     stroke-linejoin: round;
   }
 
-  button.memuat svg {
-    animation: putar 900ms linear infinite;
-  }
-
-  @keyframes putar {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   .aksi-kanan {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
   }
 
   .lencana-zoom {
     display: grid;
     width: auto;
-    min-width: 44px;
-    height: 26px;
-    padding: 0 9px;
+    min-width: 38px;
+    height: 21px;
+    padding: 0 8px;
     border-radius: 999px;
     background: var(--kartu-lembut);
     color: var(--samar);
-    font-size: 11px;
+    font-size: 10.5px;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- garis progres ---------- */
+
+  .progres {
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .progres span {
+    display: block;
+    height: 100%;
+    background: var(--teks);
+    transition: width 160ms ease-out;
+  }
+
+  /* Tanpa laporan progres dari platform, garis bergerak sendiri. */
+  .progres.tak-tentu span {
+    width: 26%;
+    animation: geser-progres 1.15s ease-in-out infinite;
+  }
+
+  @keyframes geser-progres {
+    0% {
+      transform: translateX(-110%);
+    }
+    100% {
+      transform: translateX(410%);
+    }
   }
 
   /* ---------- address bar ---------- */
@@ -1162,65 +1255,66 @@
     display: flex;
     flex: 1;
     align-items: center;
-    gap: 6px;
-    height: 38px;
-    max-width: 820px;
+    gap: 4px;
+    height: 26px;
+    max-width: 600px;
     margin: 0 auto;
-    padding: 0 8px 0 6px;
-    border: 1px solid var(--garis);
+    padding: 0 4px 0 3px;
+    border: 1px solid transparent;
     border-radius: 999px;
-    background: var(--latar);
-    transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background 150ms ease-out;
+    background: var(--kartu-lembut);
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out,
+      background 150ms ease-out, max-width 180ms ease-out;
   }
 
   .alamat:hover {
-    border-color: color-mix(in srgb, var(--teks) 18%, transparent);
+    border-color: color-mix(in srgb, var(--teks) 13%, transparent);
   }
 
   .alamat.fokus {
-    border-color: color-mix(in srgb, var(--aksen) 60%, transparent);
-    background: var(--chrome);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--aksen) 14%, transparent);
+    max-width: 720px;
+    border-color: color-mix(in srgb, var(--teks) 26%, transparent);
+    background: var(--kartu);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--teks) 7%, transparent);
   }
 
   .pelindung {
     position: relative;
     flex: none;
-    width: 26px;
-    height: 26px;
+    width: 21px;
+    height: 21px;
     border-radius: 50%;
-    color: var(--aksen);
-    background: color-mix(in srgb, var(--aksen) 12%, transparent);
+    color: var(--teks);
+    background: transparent;
   }
 
   .pelindung:hover {
-    background: color-mix(in srgb, var(--aksen) 20%, transparent);
+    background: color-mix(in srgb, var(--teks) 11%, transparent);
   }
 
   .pelindung.mati {
     color: var(--samar);
-    background: color-mix(in srgb, var(--teks) 8%, transparent);
   }
 
   .pelindung svg {
-    width: 15px;
-    height: 15px;
-    stroke-width: 1.6;
+    width: 12px;
+    height: 12px;
+    stroke-width: 1.7;
   }
 
   .pelindung .titik {
     position: absolute;
     right: 1px;
-    bottom: 1px;
-    width: 6px;
-    height: 6px;
-    border: 1.5px solid var(--latar);
+    bottom: 2px;
+    width: 5px;
+    height: 5px;
+    border: 1px solid var(--chrome);
     border-radius: 50%;
-    background: var(--aksen-2);
+    background: var(--teks);
   }
 
   .alamat.fokus .pelindung .titik {
-    border-color: var(--chrome);
+    border-color: var(--kartu);
   }
 
   .tampilan {
@@ -1236,8 +1330,8 @@
   .tampilan .host {
     overflow: hidden;
     color: var(--teks);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12.5px;
+    font-weight: 550;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1245,14 +1339,14 @@
   .tampilan .jalur {
     overflow: hidden;
     color: var(--samar);
-    font-size: 12.5px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .placeholder {
     color: var(--samar);
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .alamat input {
@@ -1264,7 +1358,7 @@
     background: transparent;
     color: var(--teks);
     font: inherit;
-    font-size: 13px;
+    font-size: 12.5px;
     outline: none;
     user-select: text;
   }
@@ -1278,8 +1372,8 @@
 
   .bintang {
     flex: none;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     color: var(--samar);
   }
@@ -1290,8 +1384,8 @@
   }
 
   .bintang.tersimpan {
-    color: var(--aksen-2);
-    background: color-mix(in srgb, var(--aksen-2) 14%, transparent);
+    color: var(--teks);
+    background: color-mix(in srgb, var(--teks) 11%, transparent);
   }
 
   .bintang.tersimpan svg {
@@ -1300,8 +1394,8 @@
   }
 
   .bintang svg {
-    width: 15px;
-    height: 15px;
+    width: 13px;
+    height: 13px;
   }
 
   .kosong {
@@ -1324,27 +1418,28 @@
     z-index: 20;
   }
 
+  /* Kartu melayang: ramping, sudut membulat, dan tidak menempel ke tepi. */
   .panel {
     position: fixed;
     z-index: 21;
-    top: calc(var(--tinggi-chrome) + 8px);
-    right: 12px;
+    top: calc(var(--tinggi-chrome) + 6px);
+    right: 8px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    width: 336px;
-    max-height: calc(100vh - var(--tinggi-chrome) - 26px);
-    padding: 14px;
+    gap: 10px;
+    width: 320px;
+    max-height: calc(100vh - var(--tinggi-chrome) - 22px);
+    padding: 12px;
     overflow-y: auto;
-    border: 1px solid var(--garis);
-    border-radius: 18px;
+    border: 1px solid var(--garis-kuat);
+    border-radius: 14px;
     background: var(--panel);
-    box-shadow: 0 24px 60px -30px rgba(10, 8, 24, 0.55), 0 2px 8px rgba(10, 8, 24, 0.12);
-    backdrop-filter: blur(20px);
+    box-shadow: var(--bayang-panel);
+    backdrop-filter: blur(18px);
   }
 
   .panel.lebar {
-    width: 400px;
+    width: 348px;
   }
 
   .panel header {
@@ -1359,31 +1454,32 @@
     align-items: center;
     gap: 7px;
     color: var(--teks);
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 650;
   }
 
   .ikon-panel {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     fill: none;
-    stroke: var(--aksen);
+    stroke: var(--teks);
     stroke-width: 1.7;
     stroke-linejoin: round;
   }
 
   .status-chip {
-    padding: 3px 9px;
+    padding: 2px 8px;
+    border: 1px solid var(--garis-kuat);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--aksen) 15%, transparent);
-    color: var(--aksen);
-    font-size: 10.5px;
-    font-weight: 650;
-    letter-spacing: 0.03em;
+    color: var(--teks);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .status-chip.mati {
-    background: color-mix(in srgb, var(--teks) 9%, transparent);
+    border-color: var(--garis);
     color: var(--samar);
   }
 
@@ -1400,18 +1496,15 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 14px;
-    border-radius: 14px;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--aksen) 12%, transparent),
-      color-mix(in srgb, var(--aksen-2) 10%, transparent)
-    );
+    padding: 12px;
+    border: 1px solid var(--garis);
+    border-radius: 11px;
+    background: var(--kartu-lembut);
   }
 
   .angka b {
     color: var(--teks);
-    font-size: 26px;
+    font-size: 24px;
     font-variant-numeric: tabular-nums;
     line-height: 1.05;
   }
@@ -1463,7 +1556,11 @@
   }
 
   .sakelar.nyala {
-    background: linear-gradient(135deg, var(--aksen), var(--aksen-2));
+    background: var(--teks);
+  }
+
+  .sakelar.nyala span {
+    background: var(--chrome);
   }
 
   .sakelar.nyala span {
@@ -1496,9 +1593,9 @@
   }
 
   .segmen button.aktif {
-    background: var(--chrome);
+    background: var(--kartu);
     color: var(--teks);
-    box-shadow: 0 1px 3px rgba(10, 8, 24, 0.16);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   .segmen.kecil button {
@@ -1521,7 +1618,7 @@
   }
 
   .cari:focus {
-    border-color: color-mix(in srgb, var(--aksen) 55%, transparent);
+    border-color: color-mix(in srgb, var(--teks) 30%, transparent);
   }
 
   .daftar-panel {
@@ -1589,9 +1686,11 @@
     width: auto;
     height: auto;
     padding: 4px 8px;
-    color: var(--aksen);
+    color: var(--teks);
     font-size: 11.5px;
     font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .zoom {
@@ -1661,9 +1760,10 @@
     height: auto;
     max-width: 60vw;
     padding: 9px 13px;
+    border: 1px solid var(--garis-kuat);
     border-radius: 10px;
-    background: #b3261e;
-    color: #fff;
+    background: #171717;
+    color: #f5f5f5;
     font-size: 12px;
     text-align: left;
     z-index: 30;
@@ -1676,7 +1776,7 @@
     .alamat,
     .sakelar,
     .sakelar span,
-    button.memuat svg,
+    .progres span,
     .denyut {
       animation: none;
       transition: none;

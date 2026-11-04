@@ -35,6 +35,12 @@ pub fn pasang_filter_ke(_webview: &Webview) {}
 
 pub fn lepas_filter(_webview: &Webview) {}
 
+/// Di Windows/macOS, layar penuh ditangani sendiri oleh wry/WebView2/WKWebView,
+/// jadi tidak ada sinyal yang perlu dipasang di sini.
+pub fn pantau(_webview: &Webview, _app: AppHandle, _id: String) -> Result<(), String> {
+    Ok(())
+}
+
 /// Pintasan keyboard lintas platform belum dikerjakan (lihat docs/rencana-fitur.md §6).
 pub fn pasang_pintasan(_app: &AppHandle) -> Result<(), String> {
     Ok(())

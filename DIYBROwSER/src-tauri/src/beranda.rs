@@ -41,25 +41,25 @@ const HTML: &str = r##"<!doctype html>
 <style>
   :root {
     color-scheme: light dark;
-    --latar: #f7f5f2;
-    --latar2: #efe9ff;
-    --teks: #17161c;
-    --samar: #6b6875;
-    --kartu: rgba(255, 255, 255, 0.72);
-    --garis: rgba(23, 22, 28, 0.1);
-    --aksen: #6b4dfb;
-    --aksen2: #ff7a59;
+    --latar: #f2f2f2;
+    --latar2: #e4e4e4;
+    --teks: #101010;
+    --samar: #6a6a6a;
+    --kartu: rgba(255, 255, 255, 0.74);
+    --garis: rgba(0, 0, 0, 0.12);
+    --aksen: #171717;
+    --aksen2: #6d6d6d;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --latar: #131218;
-      --latar2: #1d1830;
-      --teks: #f2f0f7;
-      --samar: #a09cab;
-      --kartu: rgba(38, 35, 48, 0.72);
-      --garis: rgba(242, 240, 247, 0.1);
-      --aksen: #9b86ff;
-      --aksen2: #ff9678;
+      --latar: #0c0c0c;
+      --latar2: #161616;
+      --teks: #f3f3f3;
+      --samar: #8f8f8f;
+      --kartu: rgba(255, 255, 255, 0.05);
+      --garis: rgba(255, 255, 255, 0.1);
+      --aksen: #f2f2f2;
+      --aksen2: #8a8a8a;
     }
   }
   * { box-sizing: border-box; }
@@ -69,8 +69,8 @@ const HTML: &str = r##"<!doctype html>
     align-items: center;
     justify-content: center;
     background:
-      radial-gradient(60rem 40rem at 20% -10%, var(--latar2), transparent 60%),
-      radial-gradient(50rem 30rem at 110% 10%, color-mix(in srgb, var(--aksen2) 18%, transparent), transparent 60%),
+      radial-gradient(60rem 40rem at 20% -10%, var(--latar2), transparent 62%),
+      radial-gradient(50rem 30rem at 110% 10%, color-mix(in srgb, var(--aksen2) 10%, transparent), transparent 62%),
       var(--latar);
     color: var(--teks);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -105,11 +105,11 @@ const HTML: &str = r##"<!doctype html>
   form button {
     position: absolute; right: 8px; top: 50%; translate: 0 -50%;
     width: 38px; height: 38px; border: 0; border-radius: 50%;
-    background: linear-gradient(135deg, var(--aksen), var(--aksen2));
-    color: #fff; cursor: pointer; display: grid; place-items: center;
-    transition: filter 160ms ease;
+    background: var(--aksen);
+    color: var(--latar); cursor: pointer; display: grid; place-items: center;
+    transition: opacity 160ms ease;
   }
-  form button:hover { filter: brightness(1.08); }
+  form button:hover { opacity: 0.85; }
   .pintasan { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 30px; }
   .pintasan a {
     display: flex; flex-direction: column; align-items: center; gap: 9px;
@@ -118,7 +118,7 @@ const HTML: &str = r##"<!doctype html>
     transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
   }
   .pintasan a:hover { background: var(--kartu); border-color: var(--garis); transform: translateY(-2px); }
-  .pintasan .huruft { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; font-weight: 650; font-size: 16px; color: #fff; }
+  .pintasan .huruft { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; font-weight: 650; font-size: 15px; background: var(--teks); color: var(--latar); }
   .catatan { margin: 34px 0 0; text-align: center; font-size: 12px; color: var(--samar); display: flex; align-items: center; justify-content: center; gap: 7px; }
   .catatan svg { width: 13px; height: 13px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -143,10 +143,10 @@ const HTML: &str = r##"<!doctype html>
     </button>
   </form>
   <nav class="pintasan">
-    <a href="https://www.youtube.com/"><span class="huruft" style="background:#ff3b30">Y</span>YouTube</a>
-    <a href="https://github.com/"><span class="huruft" style="background:#24292f">G</span>GitHub</a>
-    <a href="https://id.wikipedia.org/"><span class="huruft" style="background:#54595d">W</span>Wikipedia</a>
-    <a href="https://news.ycombinator.com/"><span class="huruft" style="background:#ff6600">H</span>Hacker News</a>
+    <a href="https://www.youtube.com/"><span class="huruft">Y</span>YouTube</a>
+    <a href="https://github.com/"><span class="huruft">G</span>GitHub</a>
+    <a href="https://id.wikipedia.org/"><span class="huruft">W</span>Wikipedia</a>
+    <a href="https://news.ycombinator.com/"><span class="huruft">H</span>Hacker News</a>
   </nav>
   <p class="catatan">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5 4.5 5.6v5.5c0 4.9 3.2 8.7 7.5 10.4 4.3-1.7 7.5-5.5 7.5-10.4V5.6L12 2.5Z"/></svg>
