@@ -250,17 +250,51 @@ printf 'module: %s\ntrust-policy: yes\n' "$modul" \
 
 ### Akselerasi perangkat keras
 
-WebKit disetel `HardwareAccelerationPolicy::Always`, WebGL, smooth scrolling, dan
-media stream aktif. Untuk memaksa render perangkat lunak (mesin tanpa GPU,
-driver rusak, atau sesi Xvfb):
+Sejak 0.2.3 kebijakannya `OnDemand` (bawaan WebKitGTK): GPU dipakai saat halaman
+memang membutuhkannya, dan WebKit tetap bisa mundur ke compositing perangkat
+lunak kalau driver bermasalah. Sebelumnya aplikasi memaksa `Always`, dan pada
+driver yang tidak stabil itu membuat halaman berat berhenti menggambar lalu
+macet. WebGL, smooth scrolling, dan media stream tetap aktif.
+
+Pilihan manual lewat satu variabel lingkungan:
 
 ```bash
-PERISAI_RENDER_SOFTWARE=1 ./target/debug/perisai
+PERISAI_AKSELERASI=selalu ./perisai            # paksa GPU
+PERISAI_AKSELERASI=perangkat-lunak ./perisai  # paksa render CPU
 ```
 
-Variabel `LIBGL_ALWAYS_SOFTWARE` dan `WEBKIT_DISABLE_COMPOSITING_MODE` juga
-dihormati. Sesi uji repo ini selalu memakai render perangkat lunak, jadi
-performa GPU nyata belum diukur.
+`PERISAI_RENDER_SOFTWARE=1` tetap bekerja sebagai alias render perangkat lunak.
+Sesi uji repo ini berjalan dengan render perangkat lunak, jadi performa GPU
+nyata masih belum diukur.
+
+### Video YouTube tersendat atau macet (rilis ≥ 0.2.3)
+
+Gejala: halaman YouTube berat, gulir tersendat, lalu jendela berhenti merespons
+atau prosesnya hilang. Penyebab yang sudah ditemukan:
+
+1. **Sesi Wayland lewat XWayland.** Kalau `WAYLAND_DISPLAY` ada dan
+   `GDK_BACKEND=x11` (AppImage selalu begitu; kursi X11 sungguhan tidak),
+   renderer DMA-BUF WebKitGTK membuat buffer GPU menyeberang antara Wayland dan
+   X11; video tersendat lalu macet. Sejak 0.2.3 keadaan itu dideteksi di awal
+   start dan `WEBKIT_DISABLE_DMABUF_RENDERER=1` dipasang otomatis. Kalau kamu
+   memasang variabel itu sendiri, nilai kamu yang dipakai.
+2. **Kebijakan GPU dipaksa `Always`.** Sudah diganti `OnDemand` (lihat bagian
+   sebelumnya).
+3. **GPU/driver tidak sanggup jalur GPU.** Coba `PERISAI_AKSELERASI=perangkat-lunak`
+   dan `GDK_BACKEND=x11`; kalau jadi lancar, sumbernya driver, bukan halaman.
+4. **Bukan render.** Untuk memastikan filter tidak terlibat, jalankan
+   `PERISAI_TANPA_ADBLOCK=1 ./perisai`. Beban filter di sisi Rust sudah diukur:
+   query cosmetic 10–120 µs per halaman, jadi filter bukan penyebab lag.
+
+Melihat backend yang benar-benar dipakai bisa dengan `GDK_DEBUG=all` (banyak
+output) atau cukup membaca baris `lingkungan:` di stderr saat start.
+
+Kalau halaman YouTube memuat normal tetapi pemutarnya menulis *"Your browser
+can't play this video"*, itu masalah codec GStreamer di distro, bukan Perisai:
+WebKitGTK memakai GStreamer untuk H.264/VP9. Di Arch pasang
+`gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav`.
+Video tanpa codec akan dipaksa ke jalur perangkat lunak atau gagal sama sekali,
+dan itu terasa sebagai lambat.
 
 ### Tinggi chrome dan sidebar
 

@@ -3,7 +3,7 @@
 ## Status tahap
 
 Nama produk: **Perisai** (crate `perisai`, biner `perisai`, paket `perisai`).
-Versi sekarang: **0.2.0**.
+Versi sekarang: **0.2.3**.
 
 | Tahap | Isi | Status |
 | --- | --- | --- |
@@ -48,6 +48,11 @@ Versi sekarang: **0.2.0**.
   pencari bisa dipilih (Google bawaan, Bing, DDG, Brave). DuckDuckGo diganti
   sebagai bawaan karena di jaringan yang memblokirnya pencarian gagal dengan
   "Unacceptable TLS certificate" padahal situs HTTPS lain normal.
+- **Rilis 0.2.3 (4 Nov 2026)** — lihat `docs/laporan/rilis-0.2.3.md`. YouTube
+  tersendat/macet: kebijakan GPU tidak lagi dipaksa `Always` (kini `OnDemand`,
+  bisa dipilih lewat `PERISAI_AKSELERASI`), dan renderer DMA-BUF dimatikan
+  otomatis saat sesi Wayland berjalan lewat X11. Beban filter diukur lebih dulu
+  (10–120 µs per halaman), jadi adblock tidak disalahkan tanpa bukti.
 
 ## Verifikasi terakhir (2 November 2026)
 

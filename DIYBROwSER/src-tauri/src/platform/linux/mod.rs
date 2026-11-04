@@ -57,26 +57,34 @@ fn pindahkan(webview: &Webview, rect: Rect) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Setelan WebKit yang menentukan pengalaman "berat/ringan" browser.
+/// Kebijakan akselerasi perangkat keras untuk satu webview.
 ///
-/// Akselerasi perangkat keras dinyalakan secara eksplisit: WebKitGTK memakai
-/// `OnDemand` secara bawaan, yang membuat halaman ringan tidak memakai GPU dan
-/// kadang membuat animasi tersendat. Kalau pengguna memaksa render perangkat
-/// lunak (mesin tanpa GPU, driver rusak, atau sesi uji Xvfb), kita hormati
-/// variabel lingkungan alih-alih memaksa GPU.
-fn terapkan_setelan(view: &webkit2gtk::WebView) {
-    let lunak = std::env::var_os("PERISAI_RENDER_SOFTWARE").is_some()
-        || std::env::var_os("LIBGL_ALWAYS_SOFTWARE").is_some()
-        || std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_some();
+/// Sebelumnya kita memaksa `Always`. Itu terdengar bagus di atas kertas, tetapi
+/// pada driver yang tidak stabil (Wayland lewat XWayland, GPU tua, driver Mesa
+/// setengah jadi) `Always` membuat halaman berat — terutama video YouTube —
+/// berhenti menggambar lalu macet, dan tidak ada jalan mundur karena WebKit
+/// tidak boleh jatuh ke jalur perangkat lunak.
+///
+/// Sekarang bawaannya `OnDemand`, yaitu perilaku WebKitGTK sendiri: GPU dipakai
+/// saat halaman memang membutuhkannya dan compositing perangkat lunak dipakai
+/// kalau GPU bermasalah. Pengguna yang tahu mesinnya kuat bisa memaksa dengan
+/// `PERISAI_AKSELERASI=selalu`, dan yang ingin render perangkat lunak bisa
+/// memakai `PERISAI_AKSELERASI=perangkat-lunak`.
+fn kebijakan_akselerasi(pilihan: Option<&str>) -> HardwareAccelerationPolicy {
+    match pilihan {
+        Some("selalu") => HardwareAccelerationPolicy::Always,
+        Some("perangkat-lunak") => HardwareAccelerationPolicy::Never,
+        _ => HardwareAccelerationPolicy::OnDemand,
+    }
+}
 
+/// Setelan WebKit yang menentukan pengalaman "berat/ringan" browser.
+fn terapkan_setelan(view: &webkit2gtk::WebView) {
     let Some(setelan) = WebViewExt::settings(view) else {
         return;
     };
-    setelan.set_hardware_acceleration_policy(if lunak {
-        HardwareAccelerationPolicy::Never
-    } else {
-        HardwareAccelerationPolicy::Always
-    });
+    let pilihan = std::env::var("PERISAI_AKSELERASI").ok();
+    setelan.set_hardware_acceleration_policy(kebijakan_akselerasi(pilihan.as_deref()));
     setelan.set_enable_webgl(true);
     setelan.set_enable_smooth_scrolling(true);
     setelan.set_enable_media_stream(true);
@@ -163,4 +171,30 @@ pub fn lepas_filter(webview: &Webview) {
 /// Memasang pintasan keyboard lewat handler GTK; lihat `pintasan.rs`.
 pub fn pasang_pintasan(app: &AppHandle) -> Result<(), String> {
     pintasan::pasang(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{kebijakan_akselerasi, HardwareAccelerationPolicy};
+
+    #[test]
+    fn kebijakan_akselerasi_mengikuti_permintaan_pengguna() {
+        assert_eq!(
+            kebijakan_akselerasi(None),
+            HardwareAccelerationPolicy::OnDemand
+        );
+        assert_eq!(
+            kebijakan_akselerasi(Some("selalu")),
+            HardwareAccelerationPolicy::Always
+        );
+        assert_eq!(
+            kebijakan_akselerasi(Some("perangkat-lunak")),
+            HardwareAccelerationPolicy::Never
+        );
+        // Nilai asing tidak boleh mematikan GPU tanpa sengaja.
+        assert_eq!(
+            kebijakan_akselerasi(Some("ngawur")),
+            HardwareAccelerationPolicy::OnDemand
+        );
+    }
 }

@@ -96,7 +96,11 @@ pub fn run() {
             platform::pasang_pintasan(app.handle())?;
 
             // Daftar filter dimuat di latar belakang; jendela tidak menunggu.
-            adblock.mulai(app.handle().clone());
+            // Kait diagnostik: `PERISAI_TANPA_ADBLOCK=1` melewati perlindungan
+            // sepenuhnya, untuk memisahkan masalah halaman dari content blocker.
+            if std::env::var_os("PERISAI_TANPA_ADBLOCK").is_none() {
+                adblock.mulai(app.handle().clone());
+            }
 
             let handle = app.handle().clone();
             window.on_window_event(move |event| {

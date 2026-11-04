@@ -61,6 +61,41 @@ const BERKAS_MODUL: &str = "perisai-trust.module";
 pub fn rapikan() {
     rapikan_trust_appimage();
     rapikan_ca();
+    rapikan_renderer();
+}
+
+/// Memilih renderer WebKit yang aman saat sesi Wayland dijalankan lewat X11.
+///
+/// Dua jalan menuju situasi itu: `AppRun` bawaan AppImage (hook
+/// `linuxdeploy-plugin-gtk`) memaksa `GDK_BACKEND=x11`, dan pengguna sendiri yang
+/// memaksa GTK-X11 di sesi Wayland. Di jalur XWayland, renderer DMA-BUF
+/// WebKitGTK sering membuat video tersendat lalu memacetkan jendela — halaman
+/// YouTube paling terasa — karena buffer GPU harus menyeberang antara Wayland
+/// dan X11, dan pesan `gdk_wayland_window_set_dbus_properties_libgtk_only`
+/// muncul di log.
+///
+/// Karena itu renderer DMA-BUF dimatikan **hanya** untuk kombinasi tersebut.
+/// Kalau pengguna sudah mengatur sendiri (atau memakai Wayland asli), nilai
+/// mereka dihormati — di Wayland asli DMA-BUF justru jalur tercepat.
+fn rapikan_renderer() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() {
+        return;
+    }
+    let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let backend_x11 =
+        std::env::var_os("GDK_BACKEND").as_deref() == Some(std::ffi::OsStr::new("x11"));
+    if perlu_mati_dmabuf(wayland, backend_x11) {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        eprintln!(
+            "lingkungan: sesi Wayland lewat X11; renderer DMA-BUF dimatikan agar video tidak macet"
+        );
+        eprintln!("lingkungan: untuk render native, jalankan dengan GDK_BACKEND=wayland");
+    }
+}
+
+/// Keputusan murni (tanpa efek samping) agar bisa dites.
+fn perlu_mati_dmabuf(wayland: bool, backend_x11: bool) -> bool {
+    wayland && backend_x11
 }
 
 /// Apakah proses ini berjalan dari AppImage? `APPDIR` dipasang `AppRun`;
@@ -173,7 +208,19 @@ fn bundel_ca_sistem(kandidat: &[&str]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{bundel_ca_sistem, isi_berkas_modul, modul_trust_sistem, tulis_modul};
+    use super::{
+        bundel_ca_sistem, isi_berkas_modul, modul_trust_sistem, perlu_mati_dmabuf, tulis_modul,
+    };
+
+    #[test]
+    fn dmabuf_hanya_dimatikan_untuk_wayland_lewat_x11() {
+        assert!(perlu_mati_dmabuf(true, true));
+        // Wayland asli: DMA-BUF justru jalur tercepat, jangan disentuh.
+        assert!(!perlu_mati_dmabuf(true, false));
+        // Sesi X11 sungguhan, bukan XWayland.
+        assert!(!perlu_mati_dmabuf(false, true));
+        assert!(!perlu_mati_dmabuf(false, false));
+    }
 
     #[test]
     fn modul_trust_dicari_berdasarkan_keberadaan() {
