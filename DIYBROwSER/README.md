@@ -267,16 +267,36 @@ AppImage bersifat mandiri: `linuxdeploy` ikut menyalin `libwebkit2gtk-4.1`
 `AppRun` menaruh folder itu paling depan di `LD_LIBRARY_PATH`. Pustaka itulah
 yang dipakai, bukan milik distro.
 
-Di distro bergulir seperti Arch (GStreamer 1.26), inti 1.24 memuat plugin
-`/usr/lib/gstreamer-1.0` milik host yang dibangun untuk 1.26; sebagian plugin
-decoder bisa gagal dimuat sehingga YouTube menulis *"Your browser can't play
-this video"*, dan jalur render memakai WebKit yang lebih tua daripada milik
-distro (terasa lebih lambat di Wayland).
+Sampai 0.3.2 ada lubang di situ: pustaka GStreamer ikut dibundel, **plugin**-nya
+tidak. WebKit lalu memindai `/usr/lib/gstreamer-1.0` milik host, menemukan plugin
+yang dibangun untuk GStreamer 1.26 (Arch), gagal memuatnya ke inti 1.24, dan
+melaporkan `GStreamer element appsink not found`. Akibatnya
+`MediaSource.isTypeSupported()` menjawab `false` untuk h264, vp9, av1, opus, dan
+aac sekaligus — persis pesan *"Your browser can't play this video"* dari
+YouTube, berapa pun user agent yang dikirim. Ini juga sebabnya 0.3.2 tidak
+mempan.
 
-Diagnosis cepat: jalankan **biner telanjang** (`perisai-x.y.z-linux-x86_64`) —
-ia memakai pustaka distro. Kalau di sana video jalan dan halaman terasa lebih
-cepat, penyebabnya pembungkusan AppImage, bukan halaman atau content blocker.
-Cek juga decoder di host dengan `gst-inspect-1.0 | grep -E "avdec_h264|vp9dec"`.
+Sejak 0.3.3 `bundle.linux.appimage.bundleMediaFramework` dinyalakan, jadi
+`linuxdeploy-plugin-gstreamer` menyalin plugin dan helper (`gst-plugin-scanner`)
+ke dalam AppImage dan `AppRun` mengarahkan `GST_PLUGIN_SYSTEM_PATH_1_0` ke sana.
+Konsekuensinya paket membesar dari ±81 MB menjadi ±160 MB — itu harga media yang
+benar-benar bisa diputar tanpa bergantung pada pustaka distro.
+
+Verifikasi di mesin sendiri, tanpa menebak:
+
+```bash
+perisai --diagnostik          # atau: Perisai_0.3.3_amd64.AppImage --diagnostik
+```
+
+Halaman itu menampilkan user agent yang dikirim dan tabel
+`MediaSource.isTypeSupported` + `canPlayType` dari WebKit yang sedang berjalan.
+Kalau h264/vp9/av1 `true`, masalah pemutaran bukan di codec. EME/Widevine tetap
+`false` — video ber-DRM tidak bisa diputar, dan itu batas WebKitGTK, bukan
+setelan.
+
+Paket `.deb` dan biner telanjang memakai WebKit/GStreamer distro; di Arch dengan
+`gst-plugins-good` dan `gst-libav` terpasang, keduanya sudah mendukung codec di
+atas. Cek decoder host dengan `gst-inspect-1.0 | grep -E "avdec_h264|vp9dec"`.
 
 ### Panel melayang
 
@@ -304,6 +324,11 @@ decoder ada. Tim WebKit mencatat penyaringan itu bergantung pada string user
 agent (WebKit bug 289194). Perisai mengirim UA Safari macOS — mesin yang sama,
 klaim yang paling jujur, dan yang diterima YouTube. `PERISAI_USER_AGENT=bawaan`
 mengembalikan UA WebKitGTK asli untuk diagnosis; nilai lain dipakai apa adanya.
+
+UA saja tidak cukup kalau codec-nya tidak ada: pada 0.3.2 AppImage mengirim UA
+Safari dengan benar tetapi semua codec `false` karena plugin GStreamer tidak ikut
+dibundel (lihat “AppImage membawa WebKit dan GStreamer sendiri”). Jalankan
+`perisai --diagnostik` untuk melihat keduanya sekaligus — UA dan dukungan codec.
 
 Kalau video tetap gagal, periksa decoder host: `gst-inspect-1.0 | grep -E
 "avdec_h264|vp9dec"`. Di Arch, `gst-plugins-good` (VP9) dan `gst-libav`

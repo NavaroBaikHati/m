@@ -151,10 +151,31 @@ pub fn run() {
 
 /// URL dari argumen baris perintah, kalau ada.
 fn url_awal() -> Option<Url> {
+    if std::env::args().any(|argumen| argumen == "--diagnostik") {
+        return halaman_diagnostik();
+    }
     std::env::args()
         .skip(1)
         .find(|argumen| !argumen.starts_with('-'))
         .and_then(|argumen| url_input::dari_input(&argumen))
+}
+
+/// Halaman diagnostik media bawaan (`--diagnostik`).
+///
+/// Ketika video menolak diputar, pertanyaan pertamanya selalu "codec apa yang
+/// sebenarnya didukung WebKit di mesin ini?". Halaman ini menanyakan hal itu ke
+/// mesin WebKit yang sedang berjalan — MediaSource, `canPlayType`, EME — dan
+/// menampilkan jawabannya. Versi AppImage yang lupa membawa plugin GStreamer
+/// dulunya melaporkan semua codec `false`, dan halaman inilah yang membuatnya
+/// kelihatan.
+const HALAMAN_DIAGNOSTIK: &str = include_str!("../../scripts/smoke/kodek.html");
+
+fn halaman_diagnostik() -> Option<Url> {
+    let folder = std::env::temp_dir().join("perisai-diagnostik");
+    std::fs::create_dir_all(&folder).ok()?;
+    let berkas = folder.join("media.html");
+    std::fs::write(&berkas, HALAMAN_DIAGNOSTIK).ok()?;
+    Url::parse(&format!("file://{}", berkas.display())).ok()
 }
 
 /// Membaca tab yang tersisa dari sesi terakhir, tanpa membuka halaman internal.

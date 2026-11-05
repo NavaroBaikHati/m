@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="id">
+<meta charset="utf-8" />
+<title>Uji kodek</title>
+<style>
+  body { background: #101014; color: #eee; font: 15px/1.5 monospace; padding: 24px; }
+  h1 { font-size: 18px; }
+  .ya { color: #6ee7a0; } .tidak { color: #ff6b6b; }
+  td { padding: 2px 14px 2px 0; }
+</style>
+<h1>Dukungan media WebKit</h1>
+<div id="ua"></div>
+<table id="hasil"></table>
+<script>
+  const jenis = [
+    ['MSE ada', () => typeof MediaSource !== 'undefined'],
+    ['MSE h264 (avc1.42E01E)', () => MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')],
+    ['MSE h264 high (avc1.640028)', () => MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"')],
+    ['MSE vp9 (vp09.00.10.08)', () => MediaSource.isTypeSupported('video/mp4; codecs="vp09.00.10.08"')],
+    ['MSE vp9 webm', () => MediaSource.isTypeSupported('video/webm; codecs="vp9"')],
+    ['MSE av1 (av01.0.05M.08)', () => MediaSource.isTypeSupported('video/mp4; codecs="av01.0.05M.08"')],
+    ['MSE opus', () => MediaSource.isTypeSupported('audio/webm; codecs="opus"')],
+    ['MSE aac', () => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')],
+    ['video canPlay h264', () => document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"')],
+    ['video canPlay vp9', () => document.createElement('video').canPlayType('video/webm; codecs="vp9"')],
+    ['video canPlay av1', () => document.createElement('video').canPlayType('video/mp4; codecs="av01.0.05M.08"')],
+    ['EME (Widevine)', () => !!navigator.requestMediaKeySystemAccess],
+    ['WebGL', () => { try { return !!document.createElement('canvas').getContext('webgl'); } catch (e) { return false; } }],
+  ];
+  document.getElementById('ua').textContent = 'UA: ' + navigator.userAgent;
+  const tabel = document.getElementById('hasil');
+  for (const [nama, cek] of jenis) {
+    let nilai;
+    try { nilai = cek(); } catch (e) { nilai = 'galat: ' + e.message; }
+    const ok = nilai === true || nilai === 'probably' || (typeof nilai === 'string' && nilai !== '');
+    const baris = tabel.insertRow();
+    baris.insertCell().textContent = nama;
+    const sel = baris.insertCell();
+    sel.textContent = String(nilai);
+    sel.className = ok ? 'ya' : 'tidak';
+  }
+</script>
+</html>
