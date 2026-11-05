@@ -9,6 +9,10 @@ export const EVENT_PERLINDUNGAN = "perlindungan:siap";
 export const EVENT_DAFTAR = "tab:daftar";
 export const EVENT_PROGRES = "tab:progres";
 export const EVENT_LAYAR_PENUH = "tab:layar-penuh";
+export const EVENT_PANEL = "panel:jenis";
+
+/** Panel melayang yang bisa dibuka lewat toolbar/sidebar. */
+export type JenisPanel = "perlindungan" | "pustaka" | "unduhan" | "menu";
 
 export interface KeadaanTab {
   id: string;
@@ -95,7 +99,9 @@ export const api = {
   muatUlang: () => invoke<void>("muat_ulang"),
   hentikan: () => invoke<void>("hentikan"),
   status: (id?: string) => invoke<StatusHalaman>("status_halaman", { id: id ?? null }),
-  aturPanel: (lebar: number) => invoke<void>("atur_panel", { lebar }),
+  bukaPanel: (jenis: JenisPanel) => invoke<void>("buka_panel", { jenis }),
+  tutupPanel: () => invoke<void>("tutup_panel"),
+  jenisPanel: () => invoke<string>("jenis_panel"),
   aturPerlindungan: (id: string, aktif: boolean) =>
     invoke<Perlindungan>("atur_perlindungan", { id, aktif }),
   aturZoom: (nilai: number) => invoke<number>("atur_zoom", { nilai }),
@@ -119,6 +125,9 @@ export const api = {
     listen<PeristiwaProgres>(EVENT_PROGRES, (event) => handler(event.payload)),
   onLayarPenuh: (handler: (penuh: boolean) => void): Promise<UnlistenFn> =>
     listen<boolean>(EVENT_LAYAR_PENUH, (event) => handler(event.payload)),
+  /** Jenis panel yang dibuka (`""` = ditutup); dipakai webview panel. */
+  onPanel: (handler: (jenis: string) => void): Promise<UnlistenFn> =>
+    listen<string>(EVENT_PANEL, (event) => handler(event.payload)),
   onPerlindungan: (handler: () => void): Promise<UnlistenFn> =>
     listen(EVENT_PERLINDUNGAN, () => handler()),
   onDaftarBerubah: (handler: () => void): Promise<UnlistenFn> =>

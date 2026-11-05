@@ -18,6 +18,11 @@ pub fn atur_batas(webview: &Webview, rect: Rect) -> Result<(), String> {
     webview.set_bounds(rect).map_err(|e| e.to_string())
 }
 
+/// Urutan child webview di platform ini tidak perlu diatur manual.
+pub fn naikkan(_webview: &Webview) -> Result<(), String> {
+    Ok(())
+}
+
 /// Belum ada jalur content blocker di platform ini.
 pub fn pasang_filter(
     _json: String,

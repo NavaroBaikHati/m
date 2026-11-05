@@ -131,10 +131,23 @@ pub async fn status_halaman(
     })
 }
 
-/// Memesan ruang panel samping (0 = tutup). Dipanggil UI saat panel dibuka.
+/// Membuka panel melayang (`pustaka`, `unduhan`, `menu`, `perlindungan`).
 #[tauri::command]
-pub async fn atur_panel(tabs: State<'_, TabManager>, lebar: f64) -> Result<(), String> {
-    tabs.atur_panel(lebar)
+pub async fn buka_panel(tabs: State<'_, TabManager>, jenis: String) -> Result<(), String> {
+    tabs.buka_panel(&jenis)
+}
+
+/// Menutup panel melayang.
+#[tauri::command]
+pub async fn tutup_panel(tabs: State<'_, TabManager>) -> Result<(), String> {
+    tabs.tutup_panel()
+}
+
+/// Jenis panel yang sedang terbuka; kosong kalau tertutup. Webview panel
+/// memakainya untuk menyusul event yang terlewat saat baru dimuat.
+#[tauri::command]
+pub async fn jenis_panel(tabs: State<'_, TabManager>) -> Result<String, String> {
+    Ok(tabs.jenis_panel())
 }
 
 /// Menyalakan/mematikan Perlindungan untuk situs pada tab `id`.

@@ -2,13 +2,10 @@
   import { onMount } from "svelte";
   import {
     api,
-    type Bookmark,
     type DaftarTab,
     type PeristiwaNavigasi,
     type PilihanMesin,
-    type Riwayat,
     type StatusHalaman,
-    type Unduhan,
   } from "./lib/api";
 
   type Panel = "tidak" | "perlindungan" | "pustaka" | "unduhan" | "menu";
@@ -27,10 +24,6 @@
   let galat = $state("");
   let panel = $state<Panel>("tidak");
   let pustakaTab = $state<"bookmark" | "riwayat">("bookmark");
-  let bookmarkList = $state<Bookmark[]>([]);
-  let riwayatList = $state<Riwayat[]>([]);
-  let unduhanList = $state<Unduhan[]>([]);
-  let cariPustaka = $state("");
   let mesinPencarian = $state<PilihanMesin[]>([]);
   /** Kemajuan muat per tab (0..1); tidak ada entri berarti belum ada laporan. */
   let progres = $state<Record<string, number>>({});
@@ -57,37 +50,23 @@
 
   let mesinAktif = $derived(mesinPencarian.find((mesin) => mesin.aktif));
 
-  const riwayatTersaring = $derived(
-    cariPustaka.trim()
-      ? riwayatList.filter((item) =>
-          `${item.judul} ${item.url}`.toLowerCase().includes(cariPustaka.toLowerCase()),
-        )
-      : riwayatList,
-  );
-  const bookmarkTersaring = $derived(
-    cariPustaka.trim()
-      ? bookmarkList.filter((item) =>
-          `${item.judul} ${item.url}`.toLowerCase().includes(cariPustaka.toLowerCase()),
-        )
-      : bookmarkList,
-  );
-
   $effect(() => {
     if (!sedangMengetik) isiAlamat = beranda ? "" : urlAktif;
   });
 
-  // Panel memesan ruang di kanan secukupnya; webview tab adalah child native
-  // yang selalu berada di atas chrome, jadi kartu melayang tidak bisa menutupi
-  // halaman. Kartunya dibuat ramping supaya halaman hanya menyempit sedikit.
+  // Pindah halaman berarti urusan panel sudah selesai. Panel dimiliki Rust
+  // (webview melayang sendiri), jadi penyembunyiannya lewat perintah.
+  //
+  // Penanda URL disimpan di variabel biasa, bukan `$state`: kalau effect ini
+  // ikut membaca `panel`, menulis `panel` di dalamnya memicu effect itu lagi
+  // dan panel langsung tertutup begitu dibuka.
+  let urlSebelum = "";
   $effect(() => {
-    const lebarPanel = panel === "tidak" ? 0 : panel === "pustaka" ? 372 : 344;
-    void api.aturPanel(lebarPanel).catch((error) => (galat = pesanGalat(error)));
-  });
-
-  // Pindah halaman berarti urusan panel sudah selesai.
-  $effect(() => {
-    void urlAktif;
+    const url = urlAktif;
+    if (url === urlSebelum) return;
+    urlSebelum = url;
     panel = "tidak";
+    void api.tutupPanel().catch((error) => (galat = pesanGalat(error)));
   });
 
   $effect(() => {
@@ -114,8 +93,10 @@
         const lepas = await Promise.all([
           api.onNavigasi(tanganiNavigasi),
           api.onPerintah(tanganiPerintah),
-          api.onUnduhan(() => void segarkanUnduhan()),
           api.onPerlindungan(() => void segarkanStatus()),
+          api.onPanel((jenis) => {
+            if (!jenis) panel = "tidak";
+          }),
           api.onProgres((peristiwa) => {
             progres = { ...progres, [peristiwa.tab]: peristiwa.progres };
           }),
@@ -272,7 +253,8 @@
     try {
       const sekarang = await api.toggleBookmark(urlAktif, tabAktif?.title || urlAktif);
       if (status) status = { ...status, bookmark: sekarang };
-      if (panel === "pustaka") await muatPustaka();
+      // Panel pustaka punya daftarnya sendiri; minta ia memuat ulang.
+      if (panel === "pustaka") await api.bukaPanel("pustaka");
     } catch (error) {
       galat = pesanGalat(error);
     }
@@ -323,53 +305,25 @@
     }
   }
 
-  async function muatPustaka() {
-    try {
-      const [bookmark, riwayat] = await Promise.all([api.daftarBookmark(), api.daftarRiwayat()]);
-      bookmarkList = bookmark;
-      riwayatList = riwayat;
-    } catch (error) {
-      galat = pesanGalat(error);
-    }
-  }
-
-  async function muatUnduhan() {
-    try {
-      unduhanList = await api.daftarUnduhan();
-    } catch (error) {
-      galat = pesanGalat(error);
-    }
-  }
-
-  async function segarkanUnduhan() {
-    if (panel === "unduhan") await muatUnduhan();
-  }
-
+  /** Membuka panel melayang di webview panel (Rust), atau menutupnya. */
   async function bukaPanel(baru: Panel) {
-    panel = panel === baru ? "tidak" : baru;
-    if (panel === "pustaka") await muatPustaka();
-    if (panel === "unduhan") await muatUnduhan();
+    if (baru === "tidak") return;
+    try {
+      if (panel === baru) {
+        panel = "tidak";
+        await api.tutupPanel();
+      } else {
+        panel = baru;
+        await api.bukaPanel(baru);
+      }
+    } catch (error) {
+      galat = pesanGalat(error);
+    }
   }
 
   async function bukaPustaka(tab: "bookmark" | "riwayat") {
     pustakaTab = tab;
-    cariPustaka = "";
-    panel = "pustaka";
-    await muatPustaka();
-  }
-
-  async function hapusRiwayat() {
-    try {
-      await api.hapusRiwayat();
-      await muatPustaka();
-    } catch (error) {
-      galat = pesanGalat(error);
-    }
-  }
-
-  function bukaUrl(url: string) {
-    panel = "tidak";
-    void jalankan(api.navigasi(url));
+    await bukaPanel("pustaka");
   }
 
   function pesanGalat(error: unknown): string {
@@ -405,14 +359,6 @@
     const bagian = host.split(".");
     const inti = bagian.length > 1 ? bagian[bagian.length - 2] : bagian[0];
     return (inti || "?").slice(0, 1).toUpperCase();
-  }
-
-  function waktuRelatif(detik: number): string {
-    const selisih = Math.max(0, Math.floor(Date.now() / 1000) - detik);
-    if (selisih < 60) return "baru saja";
-    if (selisih < 3600) return `${Math.floor(selisih / 60)} menit lalu`;
-    if (selisih < 86400) return `${Math.floor(selisih / 3600)} jam lalu`;
-    return `${Math.floor(selisih / 86400)} hari lalu`;
   }
 
   const alamat = $derived(pecahAlamat(urlAktif));
@@ -708,200 +654,6 @@
   </div>
 </div>
 
-{#if panel !== "tidak"}
-  <button
-    type="button"
-    class="penutup"
-    aria-label="Tutup panel"
-    onclick={() => (panel = "tidak")}
-  ></button>
-{/if}
-
-{#if panel === "perlindungan" && lencanaShield}
-  <section class="panel" aria-label="Perlindungan">
-    <header>
-      <span class="judul-panel">
-        <svg viewBox="0 0 16 16" aria-hidden="true" class="ikon-panel">
-          <path d="M8 1.7 3.6 3.5v3.4c0 3 2 5.5 4.4 6.5 2.4-1 4.4-3.5 4.4-6.5V3.5L8 1.7Z" />
-        </svg>
-        Perlindungan
-      </span>
-      <span class="status-chip" class:mati={!lencanaShield.aktif}>
-        {lencanaShield.aktif ? "Aktif" : "Mati"}
-      </span>
-    </header>
-
-    <p class="situs">{lencanaShield.host || "Halaman ini"}</p>
-
-    <div class="angka">
-      <b>{lencanaShield.jumlahAturan.toLocaleString("id-ID")}</b>
-      <span>aturan penyaring siap memblokir iklan dan pelacak</span>
-    </div>
-
-    <div class="baris">
-      <div>
-        <strong>Blokir iklan & pelacak</strong>
-        <small>
-          {#if lencanaShield.siap}
-            {lencanaShield.jumlahSelector} selector khusus untuk situs ini
-          {:else}
-            Daftar filter masih disiapkan
-          {/if}
-        </small>
-      </div>
-      <button
-        type="button"
-        class="sakelar"
-        class:nyala={lencanaShield.aktif}
-        role="switch"
-        aria-checked={lencanaShield.aktif}
-        aria-label="Blokir iklan di situs ini"
-        onclick={toggleShield}
-      >
-        <span></span>
-      </button>
-    </div>
-
-    <p class="catatan">
-      WebKit memblokir request sebelum keluar dari perangkat. Browser tidak
-      menerima laporan per-request, jadi yang ditampilkan adalah jumlah aturan
-      yang menyaring halaman ini, bukan angka iklan yang dikarang.
-    </p>
-  </section>
-{:else if panel === "pustaka"}
-  <section class="panel lebar" aria-label="Pustaka">
-    <header>
-      <div class="segmen">
-        <button type="button" class:aktif={pustakaTab === "bookmark"} onclick={() => bukaPustaka("bookmark")}>
-          Bookmark
-        </button>
-        <button type="button" class:aktif={pustakaTab === "riwayat"} onclick={() => bukaPustaka("riwayat")}>
-          Riwayat
-        </button>
-      </div>
-      <button type="button" class="ikon" aria-label="Tutup" onclick={() => (panel = "tidak")}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
-      </button>
-    </header>
-
-    <input class="cari" bind:value={cariPustaka} placeholder="Cari…" autocomplete="off" />
-
-    <div class="daftar-panel">
-      {#if pustakaTab === "bookmark"}
-        {#each bookmarkTersaring as item (item.url)}
-          <button type="button" class="baris-panel" onclick={() => bukaUrl(item.url)}>
-            <span class="avatar kecil">{inisial(item.url, item.judul)}</span>
-            <span class="teks-panel">
-              <strong>{item.judul || judulTab(item.url)}</strong>
-              <small>{item.url}</small>
-            </span>
-          </button>
-        {:else}
-          <p class="kosong-panel">Belum ada bookmark. Tekan Ctrl+D di halaman mana pun.</p>
-        {/each}
-      {:else}
-        {#each riwayatTersaring as item (item.url)}
-          <button type="button" class="baris-panel" onclick={() => bukaUrl(item.url)}>
-            <span class="avatar kecil">{inisial(item.url, item.judul)}</span>
-            <span class="teks-panel">
-              <strong>{item.judul || judulTab(item.url)}</strong>
-              <small>{judulTab(item.url)} · {waktuRelatif(item.dikunjungi)}</small>
-            </span>
-          </button>
-        {:else}
-          <p class="kosong-panel">Belum ada riwayat.</p>
-        {/each}
-      {/if}
-    </div>
-
-    {#if pustakaTab === "riwayat" && riwayatList.length > 0}
-      <footer class="panel-kaki">
-        <button type="button" class="tautan" onclick={hapusRiwayat}>Hapus semua riwayat</button>
-      </footer>
-    {/if}
-  </section>
-{:else if panel === "unduhan"}
-  <section class="panel" aria-label="Unduhan">
-    <header>
-      <span class="judul-panel">Unduhan</span>
-      <button type="button" class="ikon" aria-label="Tutup" onclick={() => (panel = "tidak")}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
-      </button>
-    </header>
-    <div class="daftar-panel">
-      {#each unduhanList as item (item.url + item.waktu)}
-        <div class="baris-panel statis">
-          <span class="avatar kecil netral" aria-hidden="true">
-            <svg viewBox="0 0 16 16"><path d="M8 2.8v7M5 7l3 3 3-3M3 12.5h10" /></svg>
-          </span>
-          <span class="teks-panel">
-            <strong>{item.nama}</strong>
-            <small title={item.path}>{item.status} · {waktuRelatif(item.waktu)}</small>
-          </span>
-        </div>
-      {:else}
-        <p class="kosong-panel">Belum ada unduhan.</p>
-      {/each}
-    </div>
-  </section>
-{:else if panel === "menu"}
-  <section class="panel" aria-label="Menu">
-    <header>
-      <span class="judul-panel">Menu</span>
-      <button type="button" class="ikon" aria-label="Tutup" onclick={() => (panel = "tidak")}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
-      </button>
-    </header>
-
-    <div class="baris">
-      <div><strong>Tema</strong><small>{namaTema}</small></div>
-      <div class="segmen kecil">
-        {#each [["sistem", "Sistem"], ["terang", "Terang"], ["gelap", "Gelap"]] as [nilai, label]}
-          <button
-            type="button"
-            class:aktif={(status?.tema ?? daftar.tema) === nilai}
-            onclick={() => pasangTema(nilai)}
-          >{label}</button>
-        {/each}
-      </div>
-    </div>
-
-    <div class="baris">
-      <div><strong>Mesin pencari</strong><small>{mesinAktif?.nama ?? "—"}</small></div>
-      <div class="segmen kecil">
-        {#each mesinPencarian as mesin (mesin.slug)}
-          <button
-            type="button"
-            class:aktif={mesin.aktif}
-            onclick={() => pasangMesin(mesin.slug)}
-          >{mesin.nama}</button>
-        {/each}
-      </div>
-    </div>
-
-    <div class="baris">
-      <div><strong>Zoom</strong><small>{Math.round((status?.zoom ?? 1) * 100)}%</small></div>
-      <div class="zoom">
-        <button type="button" aria-label="Perkecil" onclick={() => ubahZoom((status?.zoom ?? 1) - 0.1)}>−</button>
-        <button type="button" aria-label="Perbesar" onclick={() => ubahZoom((status?.zoom ?? 1) + 0.1)}>+</button>
-      </div>
-    </div>
-
-    <div class="pintasan">
-      <p>Pintasan</p>
-      <ul>
-        <li><kbd>Ctrl</kbd><kbd>T</kbd><span>Tab baru</span></li>
-        <li><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd><span>Buka tab tertutup</span></li>
-        <li><kbd>Ctrl</kbd><kbd>Tab</kbd><span>Tab berikutnya</span></li>
-        <li><kbd>Ctrl</kbd><kbd>L</kbd><span>Fokus address bar</span></li>
-        <li><kbd>Ctrl</kbd><kbd>D</kbd><span>Bookmark</span></li>
-        <li><kbd>Ctrl</kbd><kbd>J</kbd><span>Unduhan</span></li>
-        <li><kbd>Ctrl</kbd><kbd>=</kbd><span>Perbesar</span></li>
-      </ul>
-    </div>
-  </section>
-{/if}
-
 {#if galat}
   <p class="galat" role="alert">{galat}</p>
 {/if}
@@ -1023,28 +775,6 @@
     color: var(--samar);
     font-size: 10px;
     font-weight: 650;
-  }
-
-  .avatar.kecil {
-    width: 19px;
-    height: 19px;
-    font-size: 9.5px;
-  }
-
-  .avatar.netral {
-    background: var(--kartu-lembut);
-    color: var(--samar);
-  }
-
-  .avatar.netral svg,
-  .avatar svg {
-    width: 13px;
-    height: 13px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
 
   .denyut {
@@ -1406,352 +1136,6 @@
     font-size: 13px;
   }
 
-  /* ---------- panel ---------- */
-
-  .penutup {
-    position: fixed;
-    inset: 0;
-    width: auto;
-    height: auto;
-    border-radius: 0;
-    background: transparent;
-    z-index: 20;
-  }
-
-  /* Kartu melayang: ramping, sudut membulat, dan tidak menempel ke tepi. */
-  .panel {
-    position: fixed;
-    z-index: 21;
-    top: calc(var(--tinggi-chrome) + 6px);
-    right: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 320px;
-    max-height: calc(100vh - var(--tinggi-chrome) - 22px);
-    padding: 12px;
-    overflow-y: auto;
-    border: 1px solid var(--garis-kuat);
-    border-radius: 14px;
-    background: var(--panel);
-    box-shadow: var(--bayang-panel);
-    backdrop-filter: blur(18px);
-  }
-
-  .panel.lebar {
-    width: 348px;
-  }
-
-  .panel header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .judul-panel {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--teks);
-    font-size: 12.5px;
-    font-weight: 650;
-  }
-
-  .ikon-panel {
-    width: 14px;
-    height: 14px;
-    fill: none;
-    stroke: var(--teks);
-    stroke-width: 1.7;
-    stroke-linejoin: round;
-  }
-
-  .status-chip {
-    padding: 2px 8px;
-    border: 1px solid var(--garis-kuat);
-    border-radius: 999px;
-    color: var(--teks);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .status-chip.mati {
-    border-color: var(--garis);
-    color: var(--samar);
-  }
-
-  .situs {
-    margin: 0;
-    overflow: hidden;
-    color: var(--samar);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .angka {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 12px;
-    border: 1px solid var(--garis);
-    border-radius: 11px;
-    background: var(--kartu-lembut);
-  }
-
-  .angka b {
-    color: var(--teks);
-    font-size: 24px;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.05;
-  }
-
-  .angka span {
-    color: var(--samar);
-    font-size: 11.5px;
-  }
-
-  .baris {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .baris div strong {
-    display: block;
-    color: var(--teks);
-    font-size: 12.5px;
-    font-weight: 600;
-  }
-
-  .baris div small {
-    color: var(--samar);
-    font-size: 11px;
-  }
-
-  .sakelar {
-    position: relative;
-    flex: none;
-    width: 40px;
-    height: 23px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--teks) 18%, transparent);
-    transition: background 140ms ease-out;
-  }
-
-  .sakelar span {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 17px;
-    height: 17px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    transition: transform 140ms ease-out;
-  }
-
-  .sakelar.nyala {
-    background: var(--teks);
-  }
-
-  .sakelar.nyala span {
-    background: var(--chrome);
-  }
-
-  .sakelar.nyala span {
-    transform: translateX(17px);
-  }
-
-  .catatan {
-    margin: 0;
-    color: var(--samar);
-    font-size: 11px;
-    line-height: 1.45;
-  }
-
-  .segmen {
-    display: flex;
-    gap: 3px;
-    padding: 3px;
-    border-radius: 999px;
-    background: var(--kartu-lembut);
-  }
-
-  .segmen button {
-    width: auto;
-    height: 24px;
-    padding: 0 12px;
-    border-radius: 999px;
-    color: var(--samar);
-    font-size: 11.5px;
-    font-weight: 600;
-  }
-
-  .segmen button.aktif {
-    background: var(--kartu);
-    color: var(--teks);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  }
-
-  .segmen.kecil button {
-    height: 22px;
-    padding: 0 9px;
-    font-size: 11px;
-  }
-
-  .cari {
-    width: 100%;
-    height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--garis);
-    border-radius: 10px;
-    background: var(--latar);
-    color: var(--teks);
-    font: inherit;
-    font-size: 12.5px;
-    outline: none;
-  }
-
-  .cari:focus {
-    border-color: color-mix(in srgb, var(--teks) 30%, transparent);
-  }
-
-  .daftar-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .baris-panel {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    height: auto;
-    padding: 7px 8px;
-    border-radius: 10px;
-    text-align: left;
-  }
-
-  .baris-panel.statis {
-    cursor: default;
-  }
-
-  .baris-panel.statis:hover {
-    background: transparent;
-  }
-
-  .teks-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .teks-panel strong {
-    overflow: hidden;
-    color: var(--teks);
-    font-size: 12.5px;
-    font-weight: 550;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .teks-panel small {
-    overflow: hidden;
-    color: var(--samar);
-    font-size: 10.5px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .kosong-panel {
-    margin: 6px 8px;
-    color: var(--samar);
-    font-size: 11.5px;
-    line-height: 1.5;
-  }
-
-  .panel-kaki {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .tautan {
-    width: auto;
-    height: auto;
-    padding: 4px 8px;
-    color: var(--teks);
-    font-size: 11.5px;
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  .zoom {
-    display: flex;
-    gap: 4px;
-  }
-
-  .zoom button {
-    width: 28px;
-    height: 28px;
-    border-radius: 9px;
-    background: var(--kartu-lembut);
-    font-size: 14px;
-  }
-
-  .pintasan p {
-    margin: 0 0 6px;
-    color: var(--samar);
-    font-size: 10.5px;
-    font-weight: 650;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .pintasan ul {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .pintasan li {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--samar);
-    font-size: 11.5px;
-  }
-
-  .pintasan li span {
-    margin-left: auto;
-  }
-
-  kbd {
-    display: grid;
-    place-items: center;
-    min-width: 20px;
-    height: 19px;
-    padding: 0 5px;
-    border: 1px solid var(--garis);
-    border-bottom-width: 2px;
-    border-radius: 5px;
-    background: var(--latar);
-    color: var(--teks);
-    font-family: inherit;
-    font-size: 10px;
-    font-weight: 600;
-  }
-
   .galat {
     position: fixed;
     bottom: 14px;
@@ -1774,8 +1158,6 @@
     .tab,
     .tutup,
     .alamat,
-    .sakelar,
-    .sakelar span,
     .progres span,
     .denyut {
       animation: none;

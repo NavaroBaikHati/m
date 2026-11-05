@@ -33,6 +33,22 @@ pub const TINGGI_CHROME: f64 = 40.0;
 /// Harus sama dengan variabel `--lebar-sidebar` di `ui/src/app.css`.
 pub const LEBAR_SIDEBAR: f64 = 224.0;
 
+/// Label webview panel melayang (pustaka, unduhan, menu, perlindungan).
+pub const LABEL_PANEL: &str = "panel";
+
+/// Lebar panel melayang; pustaka butuh lebih banyak ruang untuk daftar URL.
+pub const LEBAR_PANEL: f64 = 344.0;
+pub const LEBAR_PANEL_PUSTAKA: f64 = 376.0;
+
+/// Jarak panel dari tepi kanan, atas (di bawah toolbar), dan bawah jendela.
+pub const JARAK_PANEL: f64 = 10.0;
+
+/// Pilihan panel yang dikenal backend.
+const JENIS_PANEL: &[&str] = &["perlindungan", "pustaka", "unduhan", "menu"];
+
+/// Panel dibuka/ditutup; `jenis` kosong berarti ditutup.
+pub const EVENT_PANEL: &str = "panel:jenis";
+
 /// Nama event yang dipakai Rust untuk memberi tahu webview chrome.
 pub const EVENT_NAVIGASI: &str = "tab:navigasi";
 pub const EVENT_UNDUHAN: &str = "unduhan:berubah";
@@ -115,8 +131,8 @@ pub struct TabManager {
     ditutup: Mutex<Vec<String>>,
     /// Zoom tab aktif, dicerminkan ke UI.
     zoom_aktif: Mutex<f64>,
-    /// Lebar area panel samping yang dipesan UI (0 = tidak ada panel).
-    panel: Mutex<f64>,
+    /// Jenis panel melayang yang sedang terbuka (`None` = tertutup).
+    panel: Mutex<Option<String>>,
     /// Tab aktif sedang memutar video layar penuh (chrome disembunyikan).
     layar_penuh: Mutex<bool>,
 }
@@ -149,7 +165,7 @@ impl TabManager {
             beranda,
             ditutup: Mutex::new(Vec::new()),
             zoom_aktif: Mutex::new(1.0),
-            panel: Mutex::new(0.0),
+            panel: Mutex::new(None),
             layar_penuh: Mutex::new(false),
         }
     }
@@ -270,6 +286,13 @@ impl TabManager {
         // Di Linux ukuran di atas diabaikan (lihat src/platform/linux), jadi
         // batas asli selalu ditetapkan lewat helper platform.
         crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+        // Webview baru ditaruh paling atas di wadah; panel melayang harus
+        // kembali menimpa halaman.
+        if self.panel_terbuka() {
+            if let Some(panel) = self.app.get_webview(LABEL_PANEL) {
+                let _ = crate::platform::naikkan(&panel);
+            }
+        }
         // Layar penuh HTML5 dan progres muat hanya bisa dipantau dari webview
         // platform; helper ini no-op di sistem operasi lain.
         crate::platform::pantau(&webview, self.app.clone(), id.clone())?;
@@ -345,6 +368,8 @@ impl TabManager {
         if self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false) {
             self.keluar_layar_penuh()?;
         }
+        // Panel melayang milik tab sebelumnya; tutup sebelum pindah.
+        self.tutup_panel()?;
         let lama = {
             let isi = self.isi.lock().map_err(|_| "state tab rusak".to_string())?;
             if !isi.tabs.iter().any(|tab| tab.id == id) {
@@ -525,6 +550,13 @@ impl TabManager {
         }
         if let Some(chrome) = self.app.get_webview(LABEL_CHROME) {
             crate::platform::atur_batas(&chrome, self.rect_penuh()?)?;
+        }
+        // Panel melayang menempel ke tepi kanan, jadi ikut bergeser saat
+        // jendela berubah ukuran.
+        let jenis = self.panel.lock().ok().and_then(|slot| slot.clone());
+        if let (Some(jenis), Some(panel)) = (jenis, self.app.get_webview(LABEL_PANEL)) {
+            crate::platform::atur_batas(&panel, self.rect_panel(&jenis)?)?;
+            crate::platform::naikkan(&panel)?;
         }
         Ok(())
     }
@@ -707,10 +739,14 @@ impl TabManager {
         })
     }
 
-    /// Area isi tab: di bawah chrome, di kanan sidebar, dikurangi area panel.
+    /// Area isi tab: di bawah chrome dan di kanan sidebar.
     ///
     /// Saat halaman meminta layar penuh, area isi memakai seluruh jendela dan
     /// chrome UI disembunyikan, jadi video tidak lagi terpotong toolbar.
+    ///
+    /// Panel melayang tidak lagi memotong area ini: panel adalah webview
+    /// sendiri yang digambar di atasnya, jadi halaman tetap selebar jendela
+    /// seperti browser lain.
     pub fn rect_konten(&self) -> Result<Rect, String> {
         let layar_penuh = self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false);
         if layar_penuh {
@@ -718,34 +754,130 @@ impl TabManager {
         }
         let (lebar, tinggi) = self.ukuran_logis()?;
         let awal = self.sidebar_lebar()?;
-        let panel = self.panel_lebar();
         Ok(Rect {
             position: LogicalPosition::new(awal, TINGGI_CHROME).into(),
-            size: LogicalSize::new(
-                (lebar - awal - panel).max(1.0),
-                (tinggi - TINGGI_CHROME).max(1.0),
-            )
-            .into(),
+            size: LogicalSize::new((lebar - awal).max(1.0), (tinggi - TINGGI_CHROME).max(1.0))
+                .into(),
         })
     }
 
-    /// Memesan ruang di kanan untuk panel UI (bookmark, unduhan, dll).
+    /// Area panel melayang: menempel ke tepi kanan, di bawah toolbar.
+    fn rect_panel(&self, jenis: &str) -> Result<Rect, String> {
+        let (lebar, tinggi) = self.ukuran_logis()?;
+        let lebar_panel = match jenis {
+            "pustaka" => LEBAR_PANEL_PUSTAKA,
+            _ => LEBAR_PANEL,
+        };
+        let y = TINGGI_CHROME + JARAK_PANEL;
+        Ok(Rect {
+            position: LogicalPosition::new((lebar - lebar_panel - JARAK_PANEL).max(0.0), y).into(),
+            size: LogicalSize::new(lebar_panel, (tinggi - y - JARAK_PANEL).max(1.0)).into(),
+        })
+    }
+
+    /// Membuka panel melayang `jenis` di atas halaman.
     ///
-    /// Child webview selalu di atas webview chrome, jadi panel yang melayang di
-    /// atas konten akan tertutup. Dengan memesan ruang, area panel berada di
-    /// luar batas webview tab dan tetap terlihat.
-    pub fn atur_panel(&self, lebar: f64) -> Result<(), String> {
+    /// Panel adalah child webview tersendiri yang dimuat dari `panel.html`.
+    /// Ini satu-satunya cara membuatnya benar-benar melayang: webview tab
+    /// selalu berada di atas webview chrome, jadi panel yang dirender di
+    /// chrome akan tertutup halaman. Ruang halaman tidak dikorbankan.
+    pub fn buka_panel(&self, jenis: &str) -> Result<(), String> {
+        if !JENIS_PANEL.contains(&jenis) {
+            return Err(format!("panel {jenis} tidak dikenal"));
+        }
+        if self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false) {
+            return Ok(());
+        }
         {
             let mut slot = self
                 .panel
                 .lock()
                 .map_err(|_| "state panel rusak".to_string())?;
-            *slot = lebar.clamp(0.0, 640.0);
+            *slot = Some(jenis.to_string());
         }
-        if let Some(webview) = self.webview_aktif() {
-            crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+
+        let webview = self.wadah_panel()?;
+        crate::platform::atur_batas(&webview, self.rect_panel(jenis)?)?;
+        // Tab yang dibuat setelah panel bisa menimpanya; pastikan panel di atas.
+        crate::platform::naikkan(&webview)?;
+        webview.show().map_err(|e| e.to_string())?;
+        let _ = webview.set_focus();
+        let _ = self.app.emit_to(
+            EventTarget::Webview {
+                label: LABEL_PANEL.to_string(),
+            },
+            EVENT_PANEL,
+            jenis,
+        );
+        Ok(())
+    }
+
+    /// Menutup panel melayang dan memberi tahu chrome agar sorotan tombolnya
+    /// ikut padam.
+    pub fn tutup_panel(&self) -> Result<(), String> {
+        let terbuka = self
+            .panel
+            .lock()
+            .map(|mut slot| slot.take().is_some())
+            .unwrap_or(false);
+        if let Some(webview) = self.app.get_webview(LABEL_PANEL) {
+            let _ = webview.hide();
+        }
+        if terbuka {
+            // Fokus kembali ke halaman supaya pintasan keyboard tetap jalan.
+            if let Some(webview) = self.webview_aktif() {
+                let _ = webview.set_focus();
+            }
+            let _ = self.app.emit_to(
+                EventTarget::Webview {
+                    label: LABEL_CHROME.to_string(),
+                },
+                EVENT_PANEL,
+                "",
+            );
         }
         Ok(())
+    }
+
+    /// Jenis panel yang sedang terbuka; kosong kalau tertutup.
+    ///
+    /// Dipakai webview panel saat baru dimuat: event `EVENT_PANEL` bisa tiba
+    /// sebelum halaman panel sempat memasang pendengarnya, jadi ia menanyakan
+    /// sendiri keadaan terakhir.
+    pub fn jenis_panel(&self) -> String {
+        let jenis = self
+            .panel
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+            .unwrap_or_default();
+        jenis
+    }
+
+    pub fn panel_terbuka(&self) -> bool {
+        self.panel
+            .lock()
+            .map(|slot| slot.is_some())
+            .unwrap_or(false)
+    }
+
+    /// Webview panel, dibuat sekali lalu dipakai ulang.
+    ///
+    /// Latar transparan supaya sudut membulat kartu tidak menampilkan kotak
+    /// gelap di atas halaman.
+    fn wadah_panel(&self) -> Result<Webview, String> {
+        if let Some(webview) = self.app.get_webview(LABEL_PANEL) {
+            return Ok(webview);
+        }
+        let builder = WebviewBuilder::new(LABEL_PANEL, WebviewUrl::App("panel.html".into()))
+            .transparent(true);
+        let ukuran = LogicalSize::new(LEBAR_PANEL, 200.0);
+        let webview = self
+            .window
+            .add_child(builder, LogicalPosition::new(0.0, 0.0), ukuran)
+            .map_err(|e| format!("gagal membuat webview panel: {e}"))?;
+        let _ = webview.hide();
+        Ok(webview)
     }
 
     /// Masuk/keluar layar penuh untuk tab `id` (dipicu sinyal WebKit).
@@ -771,6 +903,8 @@ impl TabManager {
         let _ = self.window.set_fullscreen(penuh);
 
         if penuh {
+            // Panel melayang tidak boleh menutupi video layar penuh.
+            let _ = self.tutup_panel();
             // Tab yang meminta layar penuh selalu jadi tab aktif.
             if self.label_aktif().as_deref() != Some(id) {
                 if let Some(lama) = self.label_aktif() {
@@ -816,10 +950,6 @@ impl TabManager {
             progres: progres.clamp(0.0, 1.0),
         };
         let _ = self.app.emit_to(target, EVENT_PROGRES, peristiwa);
-    }
-
-    fn panel_lebar(&self) -> f64 {
-        self.panel.lock().map(|slot| *slot).unwrap_or(0.0)
     }
 
     fn sidebar_lebar(&self) -> Result<f64, String> {

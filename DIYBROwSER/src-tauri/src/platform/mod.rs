@@ -11,7 +11,7 @@
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
-    atur_batas, filter_siap, lepas_filter, pantau, pasang_filter, pasang_filter_ke,
+    atur_batas, filter_siap, lepas_filter, naikkan, pantau, pasang_filter, pasang_filter_ke,
     pasang_pintasan, siapkan_wadah,
 };
 
@@ -19,6 +19,6 @@ pub use linux::{
 mod lainnya;
 #[cfg(not(target_os = "linux"))]
 pub use lainnya::{
-    atur_batas, filter_siap, lepas_filter, pantau, pasang_filter, pasang_filter_ke,
+    atur_batas, filter_siap, lepas_filter, naikkan, pantau, pasang_filter, pasang_filter_ke,
     pasang_pintasan, siapkan_wadah,
 };

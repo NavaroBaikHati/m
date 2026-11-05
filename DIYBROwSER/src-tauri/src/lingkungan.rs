@@ -26,6 +26,29 @@
 
 use std::path::{Path, PathBuf};
 
+/// User agent bawaan Perisai.
+///
+/// YouTube memblokir permintaan media dari browser yang dikenali sebagai
+/// WebKitGTK: permintaan ke `/videoplayback` ditolak dan pemutar hanya
+/// menampilkan "Your browser can't play this video." — bukan karena codec
+/// hilang. Tim WebKit mencatat penyaringan itu bergantung pada string user
+/// agent, dan UA Safari macOS lolos (WebKit bug 289194). Mesin Perisai memang
+/// WebKit, jadi Safari adalah klaim yang paling jujur sekaligus yang diterima.
+///
+/// `PERISAI_USER_AGENT=bawaan` mengembalikan UA WebKitGTK asli untuk diagnosis,
+/// dan nilai lain dipakai apa adanya.
+pub const UA_SAFARI: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+/// User agent yang dipakai setiap webview; `None` berarti UA WebKitGTK asli.
+pub fn user_agent() -> Option<String> {
+    match std::env::var("PERISAI_USER_AGENT") {
+        Ok(nilai) if nilai == "bawaan" => None,
+        Ok(nilai) if !nilai.trim().is_empty() => Some(nilai),
+        _ => Some(UA_SAFARI.to_string()),
+    }
+}
+
 /// Folder modul PKCS#11 yang dipatok `libp11-kit` bawaan AppImage (build Debian).
 const FOLDER_PKCS11_BAWAAN: &[&str] = &[
     "/usr/lib/x86_64-linux-gnu/pkcs11",
@@ -211,6 +234,16 @@ mod tests {
     use super::{
         bundel_ca_sistem, isi_berkas_modul, modul_trust_sistem, perlu_mati_dmabuf, tulis_modul,
     };
+
+    #[test]
+    fn user_agent_bawaan_menyamar_sebagai_safari() {
+        let ua = super::UA_SAFARI;
+        assert!(ua.contains("Safari/605.1.15"));
+        // Jangan sampai UA WebKitGTK/Perisai bocor dan diblokir lagi.
+        assert!(!ua.contains("WebKitGTK"));
+        assert!(!ua.contains("Tauri"));
+        assert!(!ua.contains("Linux"));
+    }
 
     #[test]
     fn dmabuf_hanya_dimatikan_untuk_wayland_lewat_x11() {

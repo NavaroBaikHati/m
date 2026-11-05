@@ -100,6 +100,11 @@ fn terapkan_setelan(view: &webkit2gtk::WebView) {
     setelan.set_enable_smooth_scrolling(true);
     setelan.set_enable_media_stream(true);
     setelan.set_enable_webrtc(true);
+    setelan.set_enable_mediasource(true);
+    // YouTube memblokir WebKitGTK lewat user agent; lihat `lingkungan::UA_SAFARI`.
+    if let Some(ua) = crate::lingkungan::user_agent() {
+        setelan.set_user_agent(Some(&ua));
+    }
     // Devtools hanya saat build debug; di rilis tidak ada gunanya dan menambah
     // permukaan serangan.
     setelan.set_enable_developer_extras(cfg!(debug_assertions));
@@ -153,6 +158,41 @@ fn tempatkan(widget: &gtk::Widget, rect: Rect) {
         }
     });
     widget.show();
+}
+
+/// Menaikkan webview ke atas semua saudaranya di wadah.
+///
+/// `GtkFixed` menumpuk anak sesuai urutan pemasangan, dan tidak punya API
+/// z-order. Cara yang tersedia: lepas lalu pasang lagi, sehingga anak itu
+/// menjadi yang terakhir (paling atas). Panel melayang memakai ini supaya tab
+/// yang baru dibuat tidak menimpanya.
+pub fn naikkan(webview: &Webview) -> Result<(), String> {
+    webview
+        .with_webview(|platform| {
+            let view = platform.inner();
+            let widget: gtk::Widget = view.upcast();
+            let alokasi = PENEMPATAN.with(|daftar| {
+                daftar
+                    .borrow()
+                    .iter()
+                    .find(|(lain, _)| lain == &widget)
+                    .map(|(_, alokasi)| *alokasi)
+            });
+            if let Some(induk) = widget
+                .parent()
+                .and_then(|p| p.dynamic_cast::<gtk::Container>().ok())
+            {
+                induk.remove(&widget);
+            }
+            let wadah = wadah();
+            wadah.add(&widget);
+            if let Some(alokasi) = alokasi {
+                wadah.move_(&widget, alokasi.x(), alokasi.y());
+                widget.size_allocate(&alokasi);
+            }
+            widget.show();
+        })
+        .map_err(|e| e.to_string())
 }
 
 fn wadah() -> gtk::Fixed {
@@ -244,6 +284,17 @@ pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), Strin
             // panel) memaksa WebKit menyusun ulang compositing dan membuat
             // halaman terasa tersendat.
             terapkan_setelan(&view);
+
+            // Klik pada halaman berarti pengguna selesai dengan panel melayang.
+            // Sinyal fokus tidak cukup: fokus bisa sudah berada di webview tab
+            // sehingga tidak ada focus-in, padahal kliknya tetap terjadi.
+            let app_klik = app.clone();
+            view.connect_button_press_event(move |_, _| {
+                if let Some(tabs) = app_klik.try_state::<TabManager>() {
+                    let _ = tabs.tutup_panel();
+                }
+                gtk::glib::Propagation::Proceed
+            });
 
             let app_masuk = app.clone();
             let id_masuk = id.clone();

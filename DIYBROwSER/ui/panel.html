@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perisai · panel</title>
+    <script type="module" src="/src/panel.ts"></script>
+    <style>
+      /* Panel adalah webview melayang di atas halaman: latarnya harus
+         transparan supaya sudut membulat kartu tidak jadi kotak gelap. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #panel {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="panel"></div>
+  </body>
+</html>

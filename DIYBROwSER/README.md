@@ -42,8 +42,12 @@ Versi 0.2.2. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
   berhenti saat halaman masih dimuat.
 - **Layar penuh sungguhan** untuk video HTML5: toolbar dan sidebar disembunyikan,
   isi tab memenuhi jendela, dan jendela ikut penuh layar.
-- **Panel melayang** (Perlindungan, bookmark/riwayat, unduhan, menu) berupa kartu
-  ramping yang menutup sendiri saat pindah halaman atau menekan `Esc`.
+- **Panel melayang sungguhan** (Perlindungan, bookmark/riwayat, unduhan, menu):
+  kartu dirender di webview sendiri di atas halaman, jadi halaman tetap selebar
+  jendela dan tidak menyempit. Panel menutup saat halaman diklik, `Esc`,
+  pindah halaman, atau pindah tab. Lihat “Panel melayang” di catatan teknis.
+- **User agent Safari** agar YouTube tidak memblokir permintaan medianya (lihat
+  “Video YouTube” di catatan teknis).
 - **Palet monokrom hitam** — tanpa aksen ungu; tema bawaan gelap.
 - **Halaman tab baru** dengan pencarian dan pintasan situs favorit.
 - **Bookmark, riwayat, unduhan, zoom per situs, pemulihan sesi, tema
@@ -273,6 +277,37 @@ Diagnosis cepat: jalankan **biner telanjang** (`perisai-x.y.z-linux-x86_64`) —
 ia memakai pustaka distro. Kalau di sana video jalan dan halaman terasa lebih
 cepat, penyebabnya pembungkusan AppImage, bukan halaman atau content blocker.
 Cek juga decoder di host dengan `gst-inspect-1.0 | grep -E "avdec_h264|vp9dec"`.
+
+### Panel melayang
+
+Panel tidak bisa dirender di webview chrome: webview tab selalu berada di atas
+chrome, jadi kartu apa pun di sana akan tertutup halaman. Menyisakan ruang di
+kanan halaman (kompromi lama) membuat panel terasa seperti sidebar dan halaman
+menyempit.
+
+Sekarang panel punya webview sendiri (`panel.html`, label `panel`) yang dibuat
+sekali, diposisikan menempel tepi kanan di bawah toolbar, dan dinaikkan ke atas
+semua tab. `GtkFixed` menumpuk anak sesuai urutan pemasangan dan tidak punya API
+z-order, jadi `platform::naikkan` melepas lalu memasang ulang widget panel tiap
+kali tab baru dibuat. Latar webview transparan agar sudut kartu tidak menjadi
+kotak gelap.
+
+Panel menerima jenisnya lewat event `panel:jenis`; karena event pertama bisa
+tiba sebelum halaman panel selesai dimuat, ia juga menanyakan keadaan terakhir
+lewat perintah `jenis_panel`.
+
+### Video YouTube
+
+YouTube memblokir permintaan media dari browser yang dikenali sebagai
+WebKitGTK: pemutar menampilkan *"Your browser can't play this video."* walau
+decoder ada. Tim WebKit mencatat penyaringan itu bergantung pada string user
+agent (WebKit bug 289194). Perisai mengirim UA Safari macOS — mesin yang sama,
+klaim yang paling jujur, dan yang diterima YouTube. `PERISAI_USER_AGENT=bawaan`
+mengembalikan UA WebKitGTK asli untuk diagnosis; nilai lain dipakai apa adanya.
+
+Kalau video tetap gagal, periksa decoder host: `gst-inspect-1.0 | grep -E
+"avdec_h264|vp9dec"`. Di Arch, `gst-plugins-good` (VP9) dan `gst-libav`
+(H.264) menyediakan keduanya.
 
 ### Akselerasi perangkat keras
 

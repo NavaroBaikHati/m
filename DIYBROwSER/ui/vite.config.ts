@@ -5,6 +5,15 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      // Dua webview: chrome (`index.html`) dan panel melayang (`panel.html`).
+      input: {
+        utama: "index.html",
+        panel: "panel.html",
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
