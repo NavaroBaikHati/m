@@ -170,11 +170,93 @@ fn url_awal() -> Option<Url> {
 /// kelihatan.
 const HALAMAN_DIAGNOSTIK: &str = include_str!("../../scripts/smoke/kodek.html");
 
+/// Setelan mesin yang hanya diketahui proses induk, ditempel ke halaman
+/// diagnostik supaya laporan pengguna memuat jalur render yang sebenarnya.
+fn info_mesin() -> serde_json::Value {
+    let env = |nama: &str| std::env::var(nama).ok().filter(|nilai| !nilai.is_empty());
+    let akselerasi = match env("PERISAI_AKSELERASI").as_deref() {
+        Some("selalu") => "selalu".to_string(),
+        Some("perangkat-lunak") => "perangkat-lunak".to_string(),
+        _ => "otomatis (OnDemand)".to_string(),
+    };
+    let dmabuf = if env("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() {
+        "dimatikan (jalur SHM)"
+    } else {
+        "aktif"
+    };
+    let sesi = match env("XDG_SESSION_TYPE").as_deref() {
+        Some("wayland") => "wayland".to_string(),
+        Some("x11") => "x11".to_string(),
+        _ if env("WAYLAND_DISPLAY").is_some() => "wayland (WAYLAND_DISPLAY)".to_string(),
+        _ => "x11".to_string(),
+    };
+    // WebKit bisa berasal dari pustaka sistem atau dari dalam AppImage; bedanya
+    // penting saat membandingkan kecepatan.
+    let webkit = std::fs::read_to_string("/proc/self/maps")
+        .ok()
+        .and_then(|peta| {
+            peta.lines()
+                .find(|baris| baris.contains("libwebkit2gtk-4.1.so"))
+                .and_then(|baris| baris.split_whitespace().last())
+                .map(|jalur| {
+                    if jalur.contains("AppImage") || jalur.contains("/tmp/.mount") {
+                        format!("bundel AppImage ({jalur})")
+                    } else {
+                        format!("pustaka sistem ({jalur})")
+                    }
+                })
+        })
+        .unwrap_or_else(|| "tidak diketahui".to_string());
+
+    // WebKit menyamarkan nama GPU di WebGL (selalu "Apple GPU"), jadi jalur
+    // render dinilai dari perangkat DRM yang tersedia. Tanpa `/dev/dri`,
+    // seluruh cat dilakukan CPU dan halaman pasti terasa berat.
+    let gpu = std::fs::read_dir("/dev/dri")
+        .map(|isi| {
+            let mut simpul: Vec<String> = isi
+                .flatten()
+                .map(|entri| entri.file_name().to_string_lossy().into_owned())
+                .filter(|nama| nama.starts_with("render") || nama.starts_with("card"))
+                .collect();
+            simpul.sort();
+            if simpul.is_empty() {
+                "tidak ada perangkat DRM (semua cat di CPU)".to_string()
+            } else {
+                format!("/dev/dri/{{{}}} naik/turun", simpul.join(","))
+            }
+        })
+        .unwrap_or_else(|_| "tidak ada /dev/dri (semua cat di CPU)".to_string());
+    let cpu = std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|isi| {
+            isi.lines()
+                .find(|baris| baris.starts_with("model name"))
+                .and_then(|baris| baris.split_once(':'))
+                .map(|(_, nilai)| nilai.trim().to_string())
+        })
+        .unwrap_or_else(|| "tidak diketahui".to_string());
+
+    serde_json::json!({
+        "versi": env!("CARGO_PKG_VERSION"),
+        "webkit": webkit,
+        "gpu": gpu,
+        "cpu": cpu,
+        "akselerasi": akselerasi,
+        "dmabuf": dmabuf,
+        "gdk": env("GDK_BACKEND").unwrap_or_else(|| "bawaan".to_string()),
+        "sesi": sesi,
+        "appimage": if env("APPDIR").is_some() { "ya" } else { "tidak" },
+    })
+}
+
 fn halaman_diagnostik() -> Option<Url> {
     let folder = std::env::temp_dir().join("perisai-diagnostik");
     std::fs::create_dir_all(&folder).ok()?;
-    let berkas = folder.join("media.html");
-    std::fs::write(&berkas, HALAMAN_DIAGNOSTIK).ok()?;
+    let berkas = folder.join("diagnostik.html");
+    // `/*MESIN*/null` adalah penanda di halaman; tanpa penggantian halaman tetap
+    // bisa dibuka sebagai berkas biasa.
+    let isi = HALAMAN_DIAGNOSTIK.replace("/*MESIN*/null", &format!("/*MESIN*/{}", info_mesin()));
+    std::fs::write(&berkas, isi).ok()?;
     Url::parse(&format!("file://{}", berkas.display())).ok()
 }
 

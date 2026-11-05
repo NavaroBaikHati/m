@@ -1,43 +1,221 @@
 <!DOCTYPE html>
 <html lang="id">
-<meta charset="utf-8" />
-<title>Uji kodek</title>
+<head>
+<meta charset="utf-8">
+<title>Diagnostik Perisai</title>
 <style>
-  body { background: #101014; color: #eee; font: 15px/1.5 monospace; padding: 24px; }
-  h1 { font-size: 18px; }
-  .ya { color: #6ee7a0; } .tidak { color: #ff6b6b; }
-  td { padding: 2px 14px 2px 0; }
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #111114; color: #e8e8ea;
+         font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .08em;
+       text-transform: uppercase; margin: 0; padding: 14px 18px 6px; color: #9a9aa8; }
+  #ringkas { position: sticky; top: 0; background: #111114; padding: 6px 18px 10px;
+             border-bottom: 1px solid #26262e; }
+  #fps { font-size: 30px; font-weight: 700; }
+  #gpu { font-size: 15px; font-weight: 700; }
+  .baris { padding: 1px 0; }
+  .kunci { display: inline-block; min-width: 190px; color: #8f8f9e; }
+  .ok { color: #6ee7a8; } .gagal { color: #ff8a8a; }
+  section { padding: 8px 18px 4px; }
+  #daftar { padding: 0 18px 18px; }
+  /* Uji gulir layar penuh: tiap frame seluruh area terlihat dicat ulang,
+     persis beban membaca artikel — beban yang disebut "lemot saat render". */
+  #uji { position: fixed; inset: 0; background: #111114; overflow: hidden;
+         padding: 0 18px; color: #b9b9c6; z-index: 10; }
+  #uji .dalam { max-width: 46em; }
+  #uji p { margin: 0 0 10px; }
+  #uji .petunjuk { position: fixed; left: 18px; top: 12px; color: #9a9aa8; }
 </style>
-<h1>Dukungan media WebKit</h1>
-<div id="ua"></div>
-<table id="hasil"></table>
+</head>
+<body>
+<div id="ringkas">
+  <div class="baris"><span class="kunci">fps saat menggulir</span><b id="fps">mengukur…</b></div>
+  <div class="baris"><span class="kunci">renderer</span><b id="gpu">…</b></div>
+</div>
+
+<section id="daftar">
+  <div class="baris"><span class="kunci">WebGL</span><span id="webgl">…</span></div>
+  <div class="baris"><span class="kunci">WebGL renderer</span><span id="glrenderer">…</span>
+    <span style="color:#7a7a88">(disamarkan WebKit; lihat “perangkat GPU” di bawah)</span></div>
+  <div class="baris"><span class="kunci">WebGL vendor</span><span id="glvendor">…</span></div>
+  <div class="baris"><span class="kunci">CPU inti</span><span id="inti">…</span></div>
+  <div class="baris"><span class="kunci">devicePixelRatio</span><span id="dpr">…</span></div>
+  <div class="baris"><span class="kunci">layar</span><span id="layar">…</span></div>
+  <div class="baris"><span class="kunci">user agent</span><span id="ua">…</span></div>
+</section>
+
+<section>
+  <div class="baris"><b>Mesin Perisai</b></div>
+  <div id="mesin"></div>
+</section>
+
+<section>
+  <div class="baris"><b>Dukungan media WebKit</b></div>
+  <div id="kodek"></div>
+</section>
+
+
+
 <script>
-  const jenis = [
-    ['MSE ada', () => typeof MediaSource !== 'undefined'],
-    ['MSE h264 (avc1.42E01E)', () => MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')],
-    ['MSE h264 high (avc1.640028)', () => MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"')],
-    ['MSE vp9 (vp09.00.10.08)', () => MediaSource.isTypeSupported('video/mp4; codecs="vp09.00.10.08"')],
-    ['MSE vp9 webm', () => MediaSource.isTypeSupported('video/webm; codecs="vp9"')],
-    ['MSE av1 (av01.0.05M.08)', () => MediaSource.isTypeSupported('video/mp4; codecs="av01.0.05M.08"')],
-    ['MSE opus', () => MediaSource.isTypeSupported('audio/webm; codecs="opus"')],
-    ['MSE aac', () => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')],
-    ['video canPlay h264', () => document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"')],
-    ['video canPlay vp9', () => document.createElement('video').canPlayType('video/webm; codecs="vp9"')],
-    ['video canPlay av1', () => document.createElement('video').canPlayType('video/mp4; codecs="av01.0.05M.08"')],
-    ['EME (Widevine)', () => !!navigator.requestMediaKeySystemAccess],
-    ['WebGL', () => { try { return !!document.createElement('canvas').getContext('webgl'); } catch (e) { return false; } }],
-  ];
-  document.getElementById('ua').textContent = 'UA: ' + navigator.userAgent;
-  const tabel = document.getElementById('hasil');
-  for (const [nama, cek] of jenis) {
-    let nilai;
-    try { nilai = cek(); } catch (e) { nilai = 'galat: ' + e.message; }
-    const ok = nilai === true || nilai === 'probably' || (typeof nilai === 'string' && nilai !== '');
-    const baris = tabel.insertRow();
-    baris.insertCell().textContent = nama;
-    const sel = baris.insertCell();
-    sel.textContent = String(nilai);
-    sel.className = ok ? 'ya' : 'tidak';
+  // Nilai yang diisi Rust saat halaman ini dibuka lewat `perisai --diagnostik`.
+  // Dibuka sebagai berkas biasa, bagian ini tetap `null` dan halaman tidak rusak.
+  const MESIN = window.PERISAI_MESIN || /*MESIN*/null;
+
+  // Uji 5 detik: teks panjang digulir mulus satu layar penuh, lalu dihitung
+  // berapa frame yang benar-benar sampai ke layar. Angka inilah yang paling
+  // dekat dengan keluhan "lemot saat render halaman".
+  function ujiGulir() {
+    const uji = document.createElement('div');
+    uji.id = 'uji';
+    const petunjuk = document.createElement('div');
+    petunjuk.className = 'petunjuk';
+    petunjuk.textContent = 'mengukur kecepatan menggulir…';
+    const dalam = document.createElement('div');
+    dalam.className = 'dalam';
+    for (let i = 0; i < 400; i++) {
+      const p = document.createElement('p');
+      p.textContent = 'Paragraf ' + (i + 1) + '. Baris teks contoh untuk menguji '
+        + 'kecepatan menggulir halaman; setiap frame memaksa seluruh area '
+        + 'terlihat dicat ulang, sama seperti membaca artikel panjang.';
+      dalam.appendChild(p);
+    }
+    uji.appendChild(petunjuk);
+    uji.appendChild(dalam);
+    document.body.appendChild(uji);
+
+    const lama = 5000;
+    let frame = 0;
+    const mulai = performance.now();
+    function langkah(sekarang) {
+      uji.scrollTop += 8;
+      if (uji.scrollTop + uji.clientHeight >= uji.scrollHeight - 40) uji.scrollTop = 0;
+      frame++;
+      const lewat = sekarang - mulai;
+      if (lewat < lama) {
+        requestAnimationFrame(langkah);
+        return;
+      }
+      const fps = Math.round((frame * 1000) / lewat);
+      uji.remove();
+      const nilai = document.getElementById('fps');
+      nilai.textContent = fps + ' fps (' + Math.round(lewat) + ' ms)';
+      nilai.className = fps >= 45 ? 'ok' : 'gagal';
+    }
+    requestAnimationFrame(langkah);
   }
+  ujiGulir();
+
+  document.getElementById('ua').textContent = navigator.userAgent;
+  document.getElementById('inti').textContent = String(navigator.hardwareConcurrency);
+  document.getElementById('dpr').textContent = String(window.devicePixelRatio);
+  document.getElementById('layar').textContent = screen.width + '×' + screen.height;
+
+  // Identitas renderer sebenarnya. "llvmpipe" berarti semua cat dilakukan CPU —
+  // halaman akan terasa berat berapa pun setelan aplikasinya.
+  function periksaGL() {
+    const kanvas = document.createElement('canvas');
+    const gl = kanvas.getContext('webgl2') || kanvas.getContext('webgl');
+    const webgl = document.getElementById('webgl');
+    if (!gl) {
+      webgl.textContent = 'tidak ada';
+      webgl.className = 'gagal';
+      document.getElementById('gpu').textContent = 'tanpa WebGL';
+      document.getElementById('gpu').className = 'gagal';
+      return;
+    }
+    webgl.textContent = gl instanceof WebGL2RenderingContext ? 'WebGL 2' : 'WebGL 1';
+    webgl.className = 'ok';
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    const vendor = info ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+    document.getElementById('glrenderer').textContent = renderer;
+    document.getElementById('glvendor').textContent = vendor;
+    const lunak = /llvmpipe|softpipe|swrast|software/i.test(String(renderer));
+    const gpu = document.getElementById('gpu');
+    gpu.textContent = String(renderer);
+    gpu.className = lunak ? 'gagal' : 'ok';
+    if (lunak) {
+      // Penyebab paling mungkin: GPU tidak terpakai sama sekali.
+      gpu.textContent = renderer + ' (perangkat lunak)';
+    }
+  }
+  periksaGL();
+
+  function isiMesin() {
+    const kotak = document.getElementById('mesin');
+    if (!MESIN) {
+      kotak.textContent = 'buka lewat `perisai --diagnostik` untuk melihat setelan mesin';
+      return;
+    }
+    const urut = [
+      ['versi', MESIN.versi],
+      ['WebKitGTK', MESIN.webkit],
+      ['perangkat GPU', MESIN.gpu],
+      ['CPU', MESIN.cpu],
+      ['kebijakan akselerasi', MESIN.akselerasi],
+      ['renderer DMA-BUF', MESIN.dmabuf],
+      ['GDK_BACKEND', MESIN.gdk],
+      ['sesi', MESIN.sesi],
+      ['AppImage', MESIN.appimage],
+    ];
+    for (const [kunci, nilai] of urut) {
+      const baris = document.createElement('div');
+      baris.className = 'baris';
+      const k = document.createElement('span');
+      k.className = 'kunci';
+      k.textContent = kunci;
+      baris.appendChild(k);
+      baris.appendChild(document.createTextNode(nilai === undefined || nilai === null ? '—' : String(nilai)));
+      kotak.appendChild(baris);
+    }
+  }
+  isiMesin();
+
+  // Tabel dukungan media: kalau semuanya false, pemutar akan menolak video
+  // sebelum menyentuh jaringan, berapa pun user agent yang dikirim.
+  function isiKodek() {
+    const kotak = document.getElementById('kodek');
+    const mse = typeof MediaSource !== 'undefined';
+    const video = document.createElement('video');
+    const uji = [
+      ['MSE tersedia', () => mse],
+      ['MSE h264', () => mse && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')],
+      ['MSE h264 high', () => mse && MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"')],
+      ['MSE vp9', () => mse && MediaSource.isTypeSupported('video/mp4; codecs="vp09.00.10.08"')],
+      ['MSE vp9 webm', () => mse && MediaSource.isTypeSupported('video/webm; codecs="vp9"')],
+      ['MSE av1', () => mse && MediaSource.isTypeSupported('video/mp4; codecs="av01.0.05M.08"')],
+      ['MSE opus', () => mse && MediaSource.isTypeSupported('audio/webm; codecs="opus"')],
+      ['MSE aac', () => mse && MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')],
+      ['canPlayType h264', () => video.canPlayType('video/mp4; codecs="avc1.42E01E"')],
+      ['canPlayType vp9', () => video.canPlayType('video/webm; codecs="vp9"')],
+      ['canPlayType av1', () => video.canPlayType('video/mp4; codecs="av01.0.05M.08"')],
+      ['EME (Widevine)', () => 'requestMediaKeySystemAccess' in navigator],
+    ];
+    for (const [nama, jalankan] of uji) {
+      let hasil;
+      try {
+        hasil = jalankan();
+      } catch (e) {
+        hasil = 'galat: ' + e.message;
+      }
+      const baris = document.createElement('div');
+      baris.className = 'baris';
+      const k = document.createElement('span');
+      k.className = 'kunci';
+      k.textContent = nama;
+      const v = document.createElement('span');
+      v.textContent = String(hasil);
+      if (nama.startsWith('canPlayType')) {
+        v.className = hasil ? 'ok' : 'gagal';
+      } else {
+        v.className = hasil ? 'ok' : 'gagal';
+      }
+      baris.appendChild(k);
+      baris.appendChild(v);
+      kotak.appendChild(baris);
+    }
+  }
+  isiKodek();
 </script>
+</body>
 </html>

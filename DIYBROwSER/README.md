@@ -285,7 +285,7 @@ benar-benar bisa diputar tanpa bergantung pada pustaka distro.
 Verifikasi di mesin sendiri, tanpa menebak:
 
 ```bash
-perisai --diagnostik          # atau: Perisai_0.3.3_amd64.AppImage --diagnostik
+perisai --diagnostik          # atau: Perisai_0.3.4_amd64.AppImage --diagnostik
 ```
 
 Halaman itu menampilkan user agent yang dikirim dan tabel
@@ -297,6 +297,54 @@ setelan.
 Paket `.deb` dan biner telanjang memakai WebKit/GStreamer distro; di Arch dengan
 `gst-plugins-good` dan `gst-libav` terpasang, keduanya sudah mendukung codec di
 atas. Cek decoder host dengan `gst-inspect-1.0 | grep -E "avdec_h264|vp9dec"`.
+
+### Kalau halaman terasa lambat
+
+Lambat bisa berarti tiga hal yang berbeda, dan obatnya berbeda pula: proses
+mulai lambat, halaman butuh lama untuk dimuat, atau menggulir/merender berat.
+Daripada menebak, ukur:
+
+```bash
+perisai --diagnostik
+```
+
+Halaman itu menggulir teks satu layar penuh selama 5 detik lalu menampilkan
+berapa fps yang benar-benar sampai ke layar, isi `/dev/dri`, WebKit mana yang
+dipakai (sistem atau bundel AppImage), dan setelan render yang aktif.
+
+Patokan: menggulir teks ≥ 45 fps berarti jalur render sehat; dua digit bawah
+berarti beban raster, bukan jaringan.
+
+Hasil pengukuran di mesin uji (Xvfb, kontainer, beban gulir teks satu layar penuh):
+
+| Yang dijalankan | fps |
+| --- | --- |
+| biner `perisai-0.3.4-linux-x86_64` (WebKit distro) | 16–17 |
+| `Perisai_0.3.4_amd64.AppImage` (WebKit bundel) | 0 |
+| AppImage + `WEBKIT_DISABLE_DMABUF_RENDERER=1` | 0 |
+| AppImage + `WEBKIT_DISABLE_COMPOSITING_MODE=1` | 0 |
+
+Content blocker bukan penyebabnya: 250 request CSS selesai 9 ms dengan
+perlindungan dan 10 ms tanpanya. Yang membedakan hanya WebKit mana yang dipakai —
+build Ubuntu yang dibundel AppImage jauh lebih lambat meraster halaman daripada
+WebKit milik distro.
+
+**Karena itu, kalau kecepatan penting: pakai biner telanjang atau `.deb`, bukan
+AppImage.** Di Arch, biner butuh `webkit2gtk-4.1`, `gst-plugins-good`, dan
+`gst-libav`; setelah itu jalankan langsung tanpa pembungkus.
+
+Kalau ingin membandingkan di mesin sendiri:
+
+```bash
+./perisai-0.3.4-linux-x86_64 --diagnostik                # WebKit distro
+Perisai_0.3.4_amd64.AppImage --diagnostik               # WebKit bundel
+WEBKIT_DISABLE_DMABUF_RENDERER=1 perisai --diagnostik   # renderer SHM
+PERISAI_AKSELERASI=perangkat-lunak perisai --diagnostik # paksa CPU
+```
+
+Kalau `perangkat GPU` kosong, tidak ada akselerasi sama sekali dan semua cat di
+CPU. Kalau angka biner dan AppImage sama-sama ≥ 45 fps, kemacetan bukan di render
+melainkan di jaringan atau di halaman itu sendiri.
 
 ### Panel melayang
 
