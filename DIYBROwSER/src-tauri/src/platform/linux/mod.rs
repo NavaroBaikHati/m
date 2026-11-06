@@ -319,6 +319,16 @@ pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), Strin
                 true
             });
 
+            // Status suara dipakai peniduran tab (`tabs::tidurkan_tab_lain`):
+            // tab yang memutar musik tidak boleh dihentikan.
+            let app_suara = app.clone();
+            let id_suara = id.clone();
+            view.connect_notify_local(Some("is-playing-audio"), move |view, _| {
+                if let Some(tabs) = app_suara.try_state::<TabManager>() {
+                    tabs.catat_suara(&id_suara, view.is_playing_audio());
+                }
+            });
+
             let app_progres = app.clone();
             let id_progres = id.clone();
             // Properti ini berubah sangat sering. Mengirim event tiap perubahan

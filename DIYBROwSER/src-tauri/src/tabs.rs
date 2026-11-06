@@ -10,7 +10,7 @@
 //! pemasangan content blocker, scriptlet per halaman, pencatatan riwayat,
 //! penyimpanan sesi, dan penerimaan unduhan.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -74,6 +74,10 @@ pub struct KeadaanTab {
     pub id: String,
     pub url: String,
     pub title: String,
+    /// Webview tab ini dilepas untuk menghemat memori (lihat
+    /// [`TabManager::tidurkan_tab_lain`]); URL di atas tetap bisa dibuka lagi.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tidur: bool,
 }
 
 /// Daftar tab yang ditampilkan sidebar, plus tab mana yang aktif.
@@ -135,6 +139,12 @@ pub struct TabManager {
     panel: Mutex<Option<String>>,
     /// Tab aktif sedang memutar video layar penuh (chrome disembunyikan).
     layar_penuh: Mutex<bool>,
+    /// Tab yang sedang mengeluarkan suara, diperbarui dari sinyal WebKit
+    /// `is-playing-audio`. Dipakai agar peniduran tab tidak memotong musik.
+    suara: Mutex<HashSet<String>>,
+    /// Urutan tab dipakai, terlama di depan. Peniduran tab memakai urutan ini
+    /// supaya yang paling lama tidak disentuh yang tidur lebih dulu.
+    urutan_pakai: Mutex<Vec<String>>,
 }
 
 impl TabManager {
@@ -167,7 +177,38 @@ impl TabManager {
             zoom_aktif: Mutex::new(1.0),
             panel: Mutex::new(None),
             layar_penuh: Mutex::new(false),
+            suara: Mutex::new(HashSet::new()),
+            urutan_pakai: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Mencatat tab `id` sebagai yang paling baru dipakai.
+    fn tandai_dipakai(&self, id: &str) {
+        if let Ok(mut urutan) = self.urutan_pakai.lock() {
+            urutan.retain(|lain| lain != id);
+            urutan.push(id.to_string());
+        }
+    }
+
+    /// Mencatat perubahan status suara satu tab (dipanggil `platform::pantau`).
+    pub fn catat_suara(&self, id: &str, memutar: bool) {
+        if let Ok(mut suara) = self.suara.lock() {
+            if memutar {
+                suara.insert(id.to_string());
+            } else {
+                suara.remove(id);
+            }
+        }
+    }
+
+    /// Apakah tab ini sedang memutar suara? Kalau statusnya tidak diketahui,
+    /// dianggap memutar: lebih baik tidak menidurkan tab daripada memotong
+    /// musik yang sedang diputar.
+    fn sedang_putar_suara(&self, id: &str) -> bool {
+        self.suara
+            .lock()
+            .map(|suara| suara.contains(id))
+            .unwrap_or(true)
     }
 
     /// Membuat tab baru dan menjadikannya tab aktif.
@@ -175,6 +216,38 @@ impl TabManager {
         let id = format!("tab-{}", self.urutan.fetch_add(1, Ordering::SeqCst) + 1);
         // Halaman `file://` tidak boleh tercatat sebagai riwayat atau sesi.
         let lokal = url.scheme() == "file";
+
+        self.bangun_webview(&id, &url)?;
+
+        let keadaan = KeadaanTab {
+            id: id.clone(),
+            url: url.to_string(),
+            title: String::new(),
+            tidur: false,
+        };
+        {
+            let mut isi = self.isi.lock().map_err(|_| "state tab rusak".to_string())?;
+            isi.tabs.push(keadaan.clone());
+            isi.aktif = Some(id);
+        }
+
+        self.tandai_dipakai(&keadaan.id);
+        if !lokal {
+            self.simpan_sesi();
+        }
+        beri_tahu_daftar(&self.app);
+        self.tidurkan_tab_lain();
+        Ok(keadaan)
+    }
+
+    /// Membuat webview untuk tab `id` dengan URL `url`.
+    ///
+    /// Dipakai untuk tab baru maupun untuk membangunkan tab yang ditidurkan:
+    /// keduanya sama-sama butuh WebKit, pemantau layar penuh, dan content
+    /// blocker yang terpasang sebelum halaman pertama dimuat.
+    fn bangun_webview(&self, id: &str, url: &Url) -> Result<Webview, String> {
+        let id = id.to_string();
+        let url = url.clone();
 
         let builder = WebviewBuilder::new(id.clone(), WebviewUrl::External(url.clone()))
             .on_navigation({
@@ -299,40 +372,21 @@ impl TabManager {
 
         // Perlindungan dipasang sebelum halaman pertama dimuat bila filter sudah
         // siap. Kalau belum, `pasang_perlindungan` menyusul setelah selesai.
-        if self
-            .adblock
-            .aktif_untuk(&adblock_core::host_dari(url.as_str()).unwrap_or_default())
-            && crate::platform::filter_siap()
-        {
-            crate::platform::pasang_filter_ke(&webview);
+        if crate::platform::filter_siap() {
+            if self
+                .adblock
+                .aktif_untuk(&adblock_core::host_dari(url.as_str()).unwrap_or_default())
+            {
+                crate::platform::pasang_filter_ke(&webview);
+            } else {
+                crate::platform::lepas_filter(&webview);
+            }
         }
 
         let _ = webview.show();
         let _ = webview.set_focus();
         self.terapkan_zoom_url(url.as_str());
-
-        let keadaan = KeadaanTab {
-            id: id.clone(),
-            url: url.to_string(),
-            title: String::new(),
-        };
-        let mut isi = self.isi.lock().map_err(|_| "state tab rusak".to_string())?;
-        isi.tabs.push(keadaan.clone());
-        isi.aktif = Some(id);
-        drop(isi);
-
-        if crate::platform::filter_siap()
-            && !self
-                .adblock
-                .aktif_untuk(&adblock_core::host_dari(url.as_str()).unwrap_or_default())
-        {
-            crate::platform::lepas_filter(&webview);
-        }
-        if !lokal {
-            self.simpan_sesi();
-        }
-        beri_tahu_daftar(&self.app);
-        Ok(keadaan)
+        Ok(webview)
     }
 
     /// Daftar tab untuk sidebar. URL diambil langsung dari webview agar tetap
@@ -370,18 +424,33 @@ impl TabManager {
         }
         // Panel melayang milik tab sebelumnya; tutup sebelum pindah.
         self.tutup_panel()?;
-        let lama = {
+        let (lama, url_tersimpan) = {
             let isi = self.isi.lock().map_err(|_| "state tab rusak".to_string())?;
-            if !isi.tabs.iter().any(|tab| tab.id == id) {
-                return Err(format!("tab {id} tidak ada"));
-            }
-            isi.aktif.clone()
+            let tab = isi
+                .tabs
+                .iter()
+                .find(|tab| tab.id == id)
+                .ok_or_else(|| format!("tab {id} tidak ada"))?;
+            (isi.aktif.clone(), tab.url.clone())
         };
 
-        let webview = self
-            .app
-            .get_webview(id)
-            .ok_or_else(|| format!("webview tab {id} tidak ada"))?;
+        let webview = match self.app.get_webview(id) {
+            Some(webview) => webview,
+            None => {
+                // Tab yang ditidurkan kehilangan webview-nya (memori), tetapi
+                // URL-nya tersimpan: bangun lagi dari situ. Halaman memang
+                // dimuat ulang, dan hanya terjadi saat memori sedang sempit.
+                let url = Url::parse(&url_tersimpan)
+                    .map_err(|e| format!("URL tab {id} tidak bisa dibuka lagi: {e}"))?;
+                let webview = self.bangun_webview(id, &url)?;
+                if let Ok(mut isi) = self.isi.lock() {
+                    if let Some(tab) = isi.tabs.iter_mut().find(|tab| tab.id == id) {
+                        tab.tidur = false;
+                    }
+                }
+                webview
+            }
+        };
 
         if lama.as_deref() != Some(id) {
             if let Some(lama) = lama {
@@ -399,9 +468,89 @@ impl TabManager {
         if let Ok(url) = webview.url() {
             self.terapkan_zoom_url(url.as_str());
         }
+        self.tandai_dipakai(id);
         self.simpan_sesi();
         beri_tahu_daftar(&self.app);
+        self.tidurkan_tab_lain();
         Ok(())
+    }
+
+    /// Menidurkan tab yang tidak aktif saat memori tersedia menipis.
+    ///
+    /// WebKitGTK memakai satu proses untuk setiap halaman, jadi tab yang cuma
+    /// menempel di sidebar tetap memakan 80–200 MB. Pada mesin 1–2 GB, membuka
+    /// beberapa tab saja sudah cukup untuk memaksa kernel menukar halaman ke
+    /// disk — dan setelah itu semua terasa lambat, bukan hanya tab baru.
+    ///
+    /// Tab yang ditidurkan melepas webview-nya (proses WebKit ikut berhenti)
+    /// tetapi tetap ada di daftar dengan URL terakhir; memilihnya akan memuat
+    /// ulang halaman. Tab yang sedang memutar suara dilewati supaya musik dari
+    /// tab lain tidak terpotong. Kalau memori sudah longgar, fungsi ini tidak
+    /// melakukan apa pun.
+    ///
+    /// Ambang diatur `PERISAI_TIDUR_MB` (bawaan 300, `0` mematikan).
+    /// Mengembalikan jumlah tab yang ditidurkan.
+    pub fn tidurkan_tab_lain(&self) -> usize {
+        let Some(ambang) = crate::memori::ambang_tidur() else {
+            return 0;
+        };
+        let kandidat: Vec<String> = match self.isi.lock() {
+            Ok(isi) => {
+                // Urutkan berdasarkan kapan terakhir dipakai: tab yang paling
+                // lama tidak disentuh ditidurkan lebih dulu, sehingga tab yang
+                // barusan ditinggal masih hangat kalau pengguna kembali.
+                let mut urutan = self
+                    .urutan_pakai
+                    .lock()
+                    .map(|u| u.clone())
+                    .unwrap_or_default();
+                let hidup: Vec<String> = isi
+                    .tabs
+                    .iter()
+                    .filter(|tab| Some(tab.id.as_str()) != isi.aktif.as_deref())
+                    .map(|tab| tab.id.clone())
+                    .collect();
+                urutan.retain(|id| hidup.contains(id));
+                let mut hasil = urutan.clone();
+                for id in hidup {
+                    if !hasil.contains(&id) {
+                        hasil.push(id);
+                    }
+                }
+                hasil
+            }
+            Err(_) => return 0,
+        };
+
+        let mut ditidurkan = 0;
+        for id in kandidat {
+            if crate::memori::tersedia_mb().unwrap_or(u64::MAX) >= ambang {
+                break;
+            }
+            let Some(webview) = self.app.get_webview(&id) else {
+                continue;
+            };
+            if self.sedang_putar_suara(&id) {
+                continue;
+            }
+            let url = webview.url().map(|u| u.to_string()).ok();
+            if webview.close().is_err() {
+                continue;
+            }
+            if let Ok(mut isi) = self.isi.lock() {
+                if let Some(tab) = isi.tabs.iter_mut().find(|tab| tab.id == id) {
+                    if let Some(url) = url {
+                        tab.url = url;
+                    }
+                    tab.tidur = true;
+                }
+            }
+            ditidurkan += 1;
+        }
+        if ditidurkan > 0 {
+            beri_tahu_daftar(&self.app);
+        }
+        ditidurkan
     }
 
     /// Berpindah tab relatif terhadap tab aktif (dipakai Ctrl+Tab).

@@ -285,7 +285,7 @@ benar-benar bisa diputar tanpa bergantung pada pustaka distro.
 Verifikasi di mesin sendiri, tanpa menebak:
 
 ```bash
-perisai --diagnostik          # atau: Perisai_0.3.4_amd64.AppImage --diagnostik
+perisai --diagnostik          # atau: Perisai_0.3.5_amd64.AppImage --diagnostik
 ```
 
 Halaman itu menampilkan user agent yang dikirim dan tabel
@@ -315,7 +315,8 @@ dipakai (sistem atau bundel AppImage), dan setelan render yang aktif.
 Patokan: menggulir teks ≥ 45 fps berarti jalur render sehat; dua digit bawah
 berarti beban raster, bukan jaringan.
 
-Hasil pengukuran di mesin uji (Xvfb, kontainer, beban gulir teks satu layar penuh):
+Hasil pengukuran di mesin uji (Xvfb 1366×768, kontainer tanpa GPU, beban gulir
+teks satu layar penuh). Versi 0.3.4 dulu menguji perbedaan paket:
 
 | Yang dijalankan | fps |
 | --- | --- |
@@ -333,18 +334,64 @@ WebKit milik distro.
 AppImage.** Di Arch, biner butuh `webkit2gtk-4.1`, `gst-plugins-good`, dan
 `gst-libav`; setelah itu jalankan langsung tanpa pembungkus.
 
+Setelan akselerasi juga bisa lebih lambat daripada tidak dipakai. Di mesin uji
+yang tidak punya GPU (3–4 kali jalan per setelan, versi 0.3.5). Tabel ini dari
+halaman uji gulir yang polos, jadi angkanya lebih tinggi daripada yang tampil di
+`--diagnostik` — di sana beban yang sama ditambah panel dan header lengket:
+
+| Setelan | fps |
+| --- | --- |
+| bawaan (`OnDemand`) | 26–46 |
+| `PERISAI_AKSELERASI=perangkat-lunak` | 44–57 |
+| `PERISAI_AKSELERASI=selalu` | 42–47 |
+
+Bedanya masuk akal: tanpa GPU, `OnDemand` tetap mencoba jalur GL lewat llvmpipe
+(OpenGL di atas CPU) lalu menambah compositing di atasnya, sedangkan
+`perangkat-lunak` melukis langsung. Di mesin yang GPU-nya benar-benar dipakai,
+urutan ini bisa terbalik — karena itu ukur sendiri, jangan ikut tabel ini.
+
 Kalau ingin membandingkan di mesin sendiri:
 
 ```bash
-./perisai-0.3.4-linux-x86_64 --diagnostik                # WebKit distro
-Perisai_0.3.4_amd64.AppImage --diagnostik               # WebKit bundel
+./perisai-0.3.5-linux-x86_64 --diagnostik                # WebKit distro
+Perisai_0.3.5_amd64.AppImage --diagnostik               # WebKit bundel
 WEBKIT_DISABLE_DMABUF_RENDERER=1 perisai --diagnostik   # renderer SHM
 PERISAI_AKSELERASI=perangkat-lunak perisai --diagnostik # paksa CPU
+PERISAI_AKSELERASI=selalu perisai --diagnostik          # paksa GPU
 ```
 
 Kalau `perangkat GPU` kosong, tidak ada akselerasi sama sekali dan semua cat di
 CPU. Kalau angka biner dan AppImage sama-sama ≥ 45 fps, kemacetan bukan di render
 melainkan di jaringan atau di halaman itu sendiri.
+
+### Memori: tab lama ditidurkan
+
+WebKitGTK memakai satu proses untuk setiap halaman, dan setiap proses itu bisa
+memakan 80–250 MB. Di mesin 1–2 GB, beberapa tab saja sudah cukup membuat kernel
+menukar halaman ke disk; setelah itu **semua** terasa lambat, bukan hanya tab
+baru. Karena itu, saat memori tersedia menipis, Perisai melepas webview tab yang
+tidak aktif (proses WebKit-nya ikut berhenti) dan menyimpan URL-nya. Tab itu
+tetap ada di sidebar; memilihnya memuat ulang halaman.
+
+Pengukuran di mesin uji, tiga tab terbuka (RSS seluruh pohon proses):
+
+| Keadaan | tanpa tidur | dengan tidur |
+| --- | --- | --- |
+| 3 tab terbuka | 1487–1530 MB | 1019 MB |
+| setelah berpindah tab | 1393–1413 MB | 842 MB |
+
+Bawaannya tab ditidurkan kalau `MemAvailable` di bawah 300 MB, dibaca dari
+`/proc/meminfo` — `MemFree` tidak dipakai karena tidak menghitung cache yang bisa
+dibuang kernel. Tab yang sedang memutar suara (musik dari tab lain) tidak pernah
+ditidurkan, dan yang paling lama tidak disentuh ditidurkan lebih dulu.
+
+```bash
+PERISAI_TIDUR_MB=500 perisai   # lebih agresif
+PERISAI_TIDUR_MB=0 perisai     # matikan peniduran
+```
+
+Angka tersedia dan ambangnya juga tampil di `perisai --diagnostik`, baris
+`memori`.
 
 ### Panel melayang
 

@@ -4,6 +4,7 @@ mod adblock;
 mod beranda;
 mod commands;
 mod lingkungan;
+mod memori;
 mod pintasan;
 mod platform;
 mod tabs;
@@ -246,6 +247,15 @@ fn info_mesin() -> serde_json::Value {
         "gdk": env("GDK_BACKEND").unwrap_or_else(|| "bawaan".to_string()),
         "sesi": sesi,
         "appimage": if env("APPDIR").is_some() { "ya" } else { "tidak" },
+        "memori": format!(
+            "{} MB tersedia; tab tidur di bawah {} MB",
+            crate::memori::tersedia_mb()
+                .map(|mb| mb.to_string())
+                .unwrap_or_else(|| "?".into()),
+            crate::memori::ambang_tidur()
+                .map(|mb| mb.to_string())
+                .unwrap_or_else(|| "mati".into()),
+        ),
     })
 }
 
