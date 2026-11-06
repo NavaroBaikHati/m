@@ -19,12 +19,13 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.2.2. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.3.6. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
 [laporan Tahap 3](docs/laporan/tahap-3.md),
 [laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
-[laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md), dan
-[laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md).
+[laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md),
+[laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md), dan
+[laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md).
 
 ## Fitur
 
@@ -514,6 +515,49 @@ Progres muat diambil dari properti `estimated-load-progress` dan dikirim lewat
 event `tab:progres`. Perubahan di bawah 1% tidak dikirim supaya IPC tidak
 dibanjiri ratusan event per halaman. Platform lain belum punya sumber progres,
 jadi UI memakai garis bergerak sendiri sebagai cadangan.
+
+Status "sedang memuat" (tombol berhenti dan garis progres) diambil dari properti
+`is-loading` milik WebKit, bukan dari event navigasi Tauri. Event navigasi ikut
+menyala untuk iframe, sehingga satu iframe lambat (pelacak, pemutar, kolom
+komentar) membuat tombol dan garis itu menyala terus seolah halaman belum
+selesai — padahal dokumen utama sudah selesai. `is-loading` hanya mengikuti
+dokumen utama dan padam juga saat pemuatan dihentikan.
+
+### Tab aktif tetap dianggap terlihat
+
+WebKitGTK 2.46+ meneruskan keadaan jendela ke halaman: saat jendela
+di-minimize, berpindah workspace, atau tertutup jendela lain, halaman menerima
+`visibilitychange` dan `document.hidden` menjadi true. Situs memakai itu untuk
+menghentikan pemutaran, jadi musik berhenti begitu browser tidak difokuskan.
+
+Chrome memilih lain: jendela yang di-minimize tidak menyembunyikan tab yang
+sedang aktif. Perisai mengikuti pilihan itu lewat user script yang dipasang
+sebelum dokumen dimuat (`src-tauri/src/latar.rs`): `hidden` dan
+`visibilityState` ditimpa, dan event `visibilitychange` **yang menyembunyikan**
+ditahan. Event "terlihat lagi" tetap diteruskan supaya halaman yang sempat
+berhenti bisa melanjutkan.
+
+Yang dianggap terlihat hanya tab aktif dan tab yang sedang bersuara; tab lain
+tetap menerima `visibilitychange` dan animasinya berhenti, jadi CPU tidak
+terpakai untuk halaman yang tidak dilihat. Kalau lebih suka perilaku lama:
+
+```bash
+PERISAI_TETAP_LATAR=0 perisai
+```
+
+Batasnya: WebKit tetap menurunkan frekuensi timer halaman yang jendelanya
+tidak terlihat, dan compositor tetap menghentikan pengiriman frame. Bunyi tetap
+keluar karena pemutaran berjalan di proses WebKit, tetapi animasi CSS yang
+berjalan saat jendela disembunyikan akan tersendat sampai jendela terlihat lagi.
+
+### Halaman tab baru
+
+Halaman tab baru adalah berkas HTML statis yang ditulis ulang tiap kali mesin
+pencari atau tema berubah (`src-tauri/src/beranda.rs`). Rancangannya "lembar
+indeks": kertas bergaris, judul serif besar, label monospace huruf kecil,
+tautan bernomor dengan titik pemandu, dan jam di kanan atas. Tanpa fon dari
+internet dan tanpa skrip luar, jadi tetap tampil sama saat offline dan tidak
+menambah permintaan jaringan saat tab dibuka.
 
 ### Tinggi chrome dan sidebar
 

@@ -21,7 +21,10 @@ use std::path::PathBuf;
 
 use gtk::prelude::*;
 use tauri::{AppHandle, Manager, Rect, Webview};
-use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+use webkit2gtk::{
+    HardwareAccelerationPolicy, SettingsExt, UserContentInjectedFrames, UserContentManagerExt,
+    UserScript, UserScriptInjectionTime, WebViewExt,
+};
 
 use crate::tabs::{TabManager, LABEL_CHROME};
 
@@ -266,6 +269,31 @@ pub fn lepas_filter(webview: &Webview) {
     });
 }
 
+/// Memasang skrip visibilitas (`src/latar.rs`) ke setiap dokumen webview ini.
+///
+/// Dipasang dengan `UserScriptInjectionTime::Start` supaya pendengar
+/// `visibilitychange` milik skrip ini terdaftar sebelum skrip halaman mana pun
+/// berjalan — itulah yang membuat event bisa ditahan sebelum situs melihatnya.
+/// `eval` setelah halaman dimuat tidak cukup: ia berjalan setelah situs sempat
+/// memasang pendengarnya sendiri.
+pub fn pasang_skrip_latar(webview: &Webview) {
+    let _ = webview.with_webview(|platform| {
+        let view = platform.inner();
+        let Some(manager) = view.user_content_manager() else {
+            eprintln!("user content manager tidak tersedia; latar tab aktif tidak dijaga");
+            return;
+        };
+        let skrip = UserScript::new(
+            crate::latar::SKRIP,
+            UserContentInjectedFrames::AllFrames,
+            UserScriptInjectionTime::Start,
+            &[],
+            &[],
+        );
+        manager.add_script(&skrip);
+    });
+}
+
 /// Memantau satu webview tab: layar penuh HTML5 dan kemajuan muat halaman.
 ///
 /// WebKitGTK hanya mengirim sinyal `enter-fullscreen`/`leave-fullscreen`; tanpa
@@ -328,6 +356,26 @@ pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), Strin
                     tabs.catat_suara(&id_suara, view.is_playing_audio());
                 }
             });
+
+            // Status "sedang memuat" diambil dari properti `is-loading` milik
+            // WebKit, bukan dari event navigasi Tauri. Event navigasi ikut
+            // menyala untuk iframe, sehingga halaman yang punya iframe lambat
+            // membuat garis progres dan tombol berhenti menyala selamanya.
+            // `is-loading` hanya mengikuti dokumen utama.
+            let app_muat = app.clone();
+            let id_muat = id.clone();
+            view.connect_notify_local(Some("is-loading"), move |view, _| {
+                if let Some(tabs) = app_muat.try_state::<TabManager>() {
+                    tabs.laporkan_memuat(&id_muat, view.is_loading());
+                }
+            });
+            // Properti bisa sudah menyala sebelum pendengar terpasang (halaman
+            // pertama tab baru); laporkan keadaan awalnya sekali.
+            if view.is_loading() {
+                if let Some(tabs) = app.try_state::<TabManager>() {
+                    tabs.laporkan_memuat(&id, true);
+                }
+            }
 
             let app_progres = app.clone();
             let id_progres = id.clone();

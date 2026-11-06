@@ -40,6 +40,10 @@ pub fn pasang_filter_ke(_webview: &Webview) {}
 
 pub fn lepas_filter(_webview: &Webview) {}
 
+/// Windows dan macOS tidak meneruskan keadaan jendela ke halaman, jadi tidak
+/// ada yang perlu ditimpa. Lihat `src-tauri/src/latar.rs`.
+pub fn pasang_skrip_latar(_webview: &Webview) {}
+
 /// Di Windows/macOS, layar penuh ditangani sendiri oleh wry/WebView2/WKWebView,
 /// jadi tidak ada sinyal yang perlu dipasang di sini.
 pub fn pantau(_webview: &Webview, _app: AppHandle, _id: String) -> Result<(), String> {

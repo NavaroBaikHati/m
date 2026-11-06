@@ -199,6 +199,9 @@ impl TabManager {
                 suara.remove(id);
             }
         }
+        // Tab yang baru mulai bersuara harus segera dianggap terlihat, kalau
+        // tidak situsnya sendiri yang mematikan pemutaran karena "tersembunyi".
+        self.segarkan_visibilitas();
     }
 
     /// Apakah tab ini sedang memutar suara? Kalau statusnya tidak diketahui,
@@ -235,9 +238,51 @@ impl TabManager {
         if !lokal {
             self.simpan_sesi();
         }
+        self.segarkan_visibilitas();
         beri_tahu_daftar(&self.app);
         self.tidurkan_tab_lain();
         Ok(keadaan)
+    }
+
+    /// Menyalakan atau mematikan paksaan "tab ini tetap dianggap terlihat".
+    ///
+    /// Lihat `src/latar.rs` untuk alasannya.
+    fn paksa_terlihat(&self, id: &str, nyala: bool) {
+        let nyala = nyala && crate::latar::aktif();
+        if let Some(webview) = self.app.get_webview(id) {
+            let _ = webview.eval(crate::latar::perintah(nyala));
+        }
+    }
+
+    /// Apakah tab ini sedang benar-benar mengeluarkan suara (tanpa menebak).
+    fn sedang_putar_suara_pasti(&self, id: &str) -> bool {
+        self.suara
+            .lock()
+            .map(|suara| suara.contains(id))
+            .unwrap_or(false)
+    }
+
+    /// Menyelaraskan skrip visibilitas di seluruh tab.
+    ///
+    /// Dua jenis tab tetap dianggap terlihat: tab aktif (jendela yang
+    /// di-minimize atau ditinggal ke workspace lain tidak boleh menghentikan
+    /// halaman yang sedang dipakai) dan tab yang sedang bersuara (musik latar
+    /// tetap jalan saat pengguna pindah tab, seperti browser lain). Tab lain
+    /// dibiarkan tahu ia tersembunyi supaya animasinya berhenti dan CPU tetap
+    /// lega — mesin 1,7 GB tidak kuat menyalakan semua tab sekaligus.
+    fn segarkan_visibilitas(&self) {
+        let (tabs, aktif) = match self.isi.lock() {
+            Ok(isi) => (
+                isi.tabs.iter().map(|t| t.id.clone()).collect::<Vec<_>>(),
+                isi.aktif.clone(),
+            ),
+            Err(_) => return,
+        };
+        for id in tabs {
+            let terlihat =
+                aktif.as_deref() == Some(id.as_str()) || self.sedang_putar_suara_pasti(&id);
+            self.paksa_terlihat(&id, terlihat);
+        }
     }
 
     /// Membuat webview untuk tab `id` dengan URL `url`.
@@ -254,13 +299,17 @@ impl TabManager {
                 let app = self.app.clone();
                 let id = id.clone();
                 move |url| {
+                    // Hanya URL yang dilaporkan di sini. Status "sedang
+                    // memuat" sengaja tidak: event navigasi ikut menyala untuk
+                    // iframe, jadi memakainya membuat garis progres dan tombol
+                    // berhenti menyala selama iframe mana pun belum selesai.
                     kirim(
                         &app,
                         PeristiwaNavigasi {
                             tab: id.clone(),
                             url: Some(url.to_string()),
                             title: None,
-                            memuat: Some(true),
+                            memuat: None,
                         },
                     );
                     true
@@ -286,6 +335,11 @@ impl TabManager {
                         }
                         PageLoadEvent::Finished => {
                             catat_riwayat(&app, &url);
+                            // Dokumen baru mulai dengan paksaan mati (variabel
+                            // globalnya baru), jadi selaraskan lagi.
+                            if let Some(tabs) = app.try_state::<TabManager>() {
+                                tabs.segarkan_visibilitas();
+                            }
                         }
                     }
                     kirim(
@@ -344,6 +398,9 @@ impl TabManager {
             });
 
         if let Some(lama) = self.label_aktif() {
+            // Diputuskan sebelum `hide`: tab yang bersuara tetap dianggap
+            // terlihat, tab sunyi menerima "hidden" sehingga animasinya berhenti.
+            self.paksa_terlihat(&lama, self.sedang_putar_suara_pasti(&lama));
             if let Some(webview) = self.app.get_webview(&lama) {
                 let _ = webview.hide();
             }
@@ -382,6 +439,10 @@ impl TabManager {
                 crate::platform::lepas_filter(&webview);
             }
         }
+
+        // Skrip visibilitas harus terpasang sebelum dokumen pertama dimuat,
+        // jadi dipasang di sini — bukan di `pantau` yang berjalan setelahnya.
+        crate::platform::pasang_skrip_latar(&webview);
 
         let _ = webview.show();
         let _ = webview.set_focus();
@@ -453,8 +514,10 @@ impl TabManager {
         };
 
         if lama.as_deref() != Some(id) {
-            if let Some(lama) = lama {
-                if let Some(lama) = self.app.get_webview(&lama) {
+            if let Some(lama) = lama.as_deref() {
+                // Sama seperti di `bangun_webview`: putuskan sebelum hide.
+                self.paksa_terlihat(lama, self.sedang_putar_suara_pasti(lama));
+                if let Some(lama) = self.app.get_webview(lama) {
                     let _ = lama.hide();
                 }
             }
@@ -463,7 +526,12 @@ impl TabManager {
         }
 
         crate::platform::atur_batas(&webview, self.rect_konten()?)?;
+        // Sebelum `show`: event "terlihat lagi" yang dikirim WebKit nanti
+        // memang tidak ditahan, tetapi flag ini juga yang menentukan perilaku
+        // halaman kalau ia memeriksa keadaannya sendiri lebih dulu.
+        self.paksa_terlihat(id, true);
         webview.show().map_err(|e| e.to_string())?;
+        self.segarkan_visibilitas();
         let _ = webview.set_focus();
         if let Ok(url) = webview.url() {
             self.terapkan_zoom_url(url.as_str());
@@ -645,6 +713,7 @@ impl TabManager {
             self.keluar_layar_penuh()?;
         }
         self.simpan_sesi();
+        self.segarkan_visibilitas();
         beri_tahu_daftar(&self.app);
         Ok(())
     }
@@ -1087,6 +1156,27 @@ impl TabManager {
         let _ = self.app.emit_to(target, EVENT_LAYAR_PENUH, penuh);
         beri_tahu_daftar(&self.app);
         Ok(())
+    }
+
+    /// Meneruskan keadaan "sedang memuat" tab `id` ke chrome UI.
+    ///
+    /// Dipanggil dari `platform::pantau` (sinyal `is-loading` WebKit), jadi
+    /// nilainya mengikuti dokumen utama saja — iframe tidak ikut dihitung —
+    /// dan ikut padam saat pemuatan dihentikan.
+    pub fn laporkan_memuat(&self, id: &str, memuat: bool) {
+        let target = EventTarget::Webview {
+            label: LABEL_CHROME.to_string(),
+        };
+        let _ = self.app.emit_to(
+            target,
+            EVENT_NAVIGASI,
+            PeristiwaNavigasi {
+                tab: id.to_string(),
+                url: None,
+                title: None,
+                memuat: Some(memuat),
+            },
+        );
     }
 
     /// Meneruskan kemajuan muat halaman ke chrome UI.

@@ -3,6 +3,7 @@
 mod adblock;
 mod beranda;
 mod commands;
+mod latar;
 mod lingkungan;
 mod memori;
 mod pintasan;
@@ -61,7 +62,14 @@ pub fn run() {
                 url_input::atur_mesin(&slug);
             }
 
-            let beranda_url = beranda::siapkan(app.handle())?;
+            // Halaman tab baru ditulis dengan tema aplikasi yang tersimpan,
+            // supaya tidak putih di tengah UI gelap.
+            let tema = db
+                .lock()
+                .ok()
+                .and_then(|db| db.get_pengaturan("tema").ok().flatten())
+                .unwrap_or_else(|| "gelap".into());
+            let beranda_url = beranda::siapkan(app.handle(), &tema)?;
             let tabs = TabManager::new(
                 app.handle().clone(),
                 window.clone(),

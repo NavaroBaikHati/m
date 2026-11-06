@@ -166,8 +166,15 @@ pub async fn atur_zoom(tabs: State<'_, TabManager>, nilai: f64) -> Result<f64, S
 }
 
 #[tauri::command]
-pub async fn atur_tema(tabs: State<'_, TabManager>, tema: String) -> Result<String, String> {
-    tabs.atur_tema(&tema)
+pub async fn atur_tema(
+    app: AppHandle,
+    tabs: State<'_, TabManager>,
+    tema: String,
+) -> Result<String, String> {
+    let tema = tabs.atur_tema(&tema)?;
+    // Halaman tab baru ikut berganti tema saat tab berikutnya dibuka.
+    let _ = beranda::siapkan(&app, &tema);
+    Ok(tema)
 }
 
 /// Satu pilihan mesin pencari untuk menu.
@@ -204,11 +211,13 @@ pub async fn atur_mesin_pencarian(
 ) -> Result<Vec<PilihanMesin>, String> {
     let mesin = url_input::atur_mesin(&slug)
         .ok_or_else(|| format!("mesin pencari tidak dikenal: {slug}"))?;
-    db.0.lock()
-        .map_err(|_| "basis data terkunci".to_string())?
-        .set_pengaturan(KUNCI_MESIN, mesin.slug())
-        .map_err(|e| e.to_string())?;
-    beranda::siapkan(&app)?;
+    let tema = {
+        let db = db.0.lock().map_err(|_| "basis data terkunci".to_string())?;
+        db.set_pengaturan(KUNCI_MESIN, mesin.slug())
+            .map_err(|e| e.to_string())?;
+        db.get_pengaturan("tema").ok().flatten()
+    };
+    beranda::siapkan(&app, tema.as_deref().unwrap_or("gelap"))?;
     Ok(daftar_mesin(mesin))
 }
 
