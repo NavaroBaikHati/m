@@ -5,7 +5,9 @@ mod beranda;
 mod commands;
 mod latar;
 mod lingkungan;
+mod macet;
 mod memori;
+mod penulis;
 mod pintasan;
 mod platform;
 mod tabs;
@@ -80,6 +82,8 @@ pub fn run() {
             // Di Linux, webview chrome dipindahkan ke GtkFixed milik kita agar
             // tata letak absolut bisa dipakai (lihat src/platform/linux).
             platform::siapkan_wadah(app.handle(), tabs.rect_penuh()?)?;
+
+            macet::mulai(app.handle());
 
             let awal = url_awal().unwrap_or_else(|| beranda_url.clone());
             let sesi = if awal == beranda_url {

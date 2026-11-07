@@ -65,6 +65,15 @@ impl Storage {
     }
 
     fn dari_connection(conn: Connection) -> Result<Self> {
+        // WAL + synchronous NORMAL: riwayat dan sesi ditulis dari thread latar
+        // (lihat `src-tauri/src/penulis.rs`), dan tanpa ini setiap commit
+        // menunggu fsync sekaligus memblokir pembaca lain. Keduanya hanya
+        // pengaturan, jadi kegagalannya tidak fatal.
+        let _ = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get::<_, String>(0));
+        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+        // Kalau penulis latar dan perintah UI bertabrakan, tunggu sebentar
+        // alih-alih langsung gagal dengan SQLITE_BUSY.
+        let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
         let storage = Self { conn };
         storage.migrasi()?;
         Ok(storage)

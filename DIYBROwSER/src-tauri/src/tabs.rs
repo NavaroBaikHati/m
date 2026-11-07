@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use storage::Storage;
@@ -28,6 +28,10 @@ use crate::adblock::{Adblock, Perlindungan};
 /// Tinggi chrome browser (toolbar) dalam logical pixel.
 /// Harus sama dengan variabel `--tinggi-chrome` di `ui/src/app.css`.
 pub const TINGGI_CHROME: f64 = 40.0;
+
+/// Jeda sebelum peniduran tab dikerjakan, supaya tidak bertabrakan dengan
+/// pembukaan halaman yang baru saja diminta.
+const JEDA_TIDUR: Duration = Duration::from_millis(1500);
 
 /// Lebar sidebar vertikal saat terbuka, dalam logical pixel.
 /// Harus sama dengan variabel `--lebar-sidebar` di `ui/src/app.css`.
@@ -145,6 +149,11 @@ pub struct TabManager {
     /// Urutan tab dipakai, terlama di depan. Peniduran tab memakai urutan ini
     /// supaya yang paling lama tidak disentuh yang tidur lebih dulu.
     urutan_pakai: Mutex<Vec<String>>,
+    /// Riwayat dan sesi ditulis di thread sendiri; main thread tidak menunggu
+    /// disk (lihat `src/penulis.rs`).
+    penulis: crate::penulis::Penulis,
+    /// Peniduran tab sedang dijadwalkan atau berjalan di latar belakang.
+    tidur_berjalan: std::sync::atomic::AtomicBool,
 }
 
 impl TabManager {
@@ -171,6 +180,7 @@ impl TabManager {
             }),
             urutan: AtomicUsize::new(0),
             adblock,
+            penulis: crate::penulis::Penulis::mulai(db.clone()),
             db,
             beranda,
             ditutup: Mutex::new(Vec::new()),
@@ -179,6 +189,7 @@ impl TabManager {
             layar_penuh: Mutex::new(false),
             suara: Mutex::new(HashSet::new()),
             urutan_pakai: Mutex::new(Vec::new()),
+            tidur_berjalan: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -240,7 +251,7 @@ impl TabManager {
         }
         self.segarkan_visibilitas();
         beri_tahu_daftar(&self.app);
-        self.tidurkan_tab_lain();
+        self.jadwalkan_tidur();
         Ok(keadaan)
     }
 
@@ -539,7 +550,7 @@ impl TabManager {
         self.tandai_dipakai(id);
         self.simpan_sesi();
         beri_tahu_daftar(&self.app);
-        self.tidurkan_tab_lain();
+        self.jadwalkan_tidur();
         Ok(())
     }
 
@@ -558,6 +569,10 @@ impl TabManager {
     ///
     /// Ambang diatur `PERISAI_TIDUR_MB` (bawaan 300, `0` mematikan).
     /// Mengembalikan jumlah tab yang ditidurkan.
+    ///
+    /// Jangan dipanggil langsung di tengah pembukaan tab: melepas webview
+    /// berarti GTK menghancurkan widget dan WebKit menghentikan prosesnya, dan
+    /// itu dikerjakan di main thread. Gunakan [`Self::jadwalkan_tidur`].
     pub fn tidurkan_tab_lain(&self) -> usize {
         let Some(ambang) = crate::memori::ambang_tidur() else {
             return 0;
@@ -619,6 +634,40 @@ impl TabManager {
             beri_tahu_daftar(&self.app);
         }
         ditidurkan
+    }
+
+    /// Menjadwalkan peniduran tab setelah halaman baru tenang.
+    ///
+    /// Melepas webview menghancurkan widget GTK sekaligus menghentikan proses
+    /// WebKit-nya. Dikerjakan tepat saat halaman baru dibuka, itu terasa
+    /// sebagai jendela yang membeku — dan di mesin 1–2 GB ambangnya sering
+    /// tersentuh justru ketika tab baru dibuka. Karena itu pekerjaannya ditunda
+    /// sebentar dan hanya dijadwalkan sekali per gelombang.
+    pub fn jadwalkan_tidur(&self) {
+        if crate::memori::ambang_tidur().is_none() {
+            return;
+        }
+        if self.tidur_berjalan.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let app = self.app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(JEDA_TIDUR);
+            let untuk_main = app.clone();
+            let hasil = app.run_on_main_thread(move || {
+                if let Some(tabs) = untuk_main.try_state::<TabManager>() {
+                    tabs.tidurkan_tab_lain();
+                    tabs.tidur_berjalan.store(false, Ordering::SeqCst);
+                }
+            });
+            if hasil.is_err() {
+                // Jendela sudah ditutup; jangan biarkan penanda menyala
+                // sehingga peniduran tidak pernah dijadwalkan lagi.
+                if let Some(tabs) = app.try_state::<TabManager>() {
+                    tabs.tidur_berjalan.store(false, Ordering::SeqCst);
+                }
+            }
+        });
     }
 
     /// Berpindah tab relatif terhadap tab aktif (dipakai Ctrl+Tab).
@@ -939,8 +988,8 @@ impl TabManager {
                 .collect(),
             Err(_) => return,
         };
-        if let (Ok(db), Ok(json)) = (self.db.lock(), serde_json::to_string(&urls)) {
-            let _ = db.set_pengaturan("sesi", &json);
+        if let Ok(json) = serde_json::to_string(&urls) {
+            self.penulis.pengaturan("sesi", &json);
         }
     }
 
@@ -1267,9 +1316,7 @@ fn catat_riwayat_judul(app: &AppHandle, url: &str, judul: &str) {
         return;
     }
     if let Some(tabs) = app.try_state::<TabManager>() {
-        if let Ok(db) = tabs.db.lock() {
-            let _ = db.catat_kunjungan(url, judul, sekarang());
-        }
+        tabs.penulis.riwayat(url, judul, sekarang());
     }
 }
 

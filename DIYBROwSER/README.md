@@ -19,13 +19,14 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.3.6. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.3.7. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
 [laporan Tahap 3](docs/laporan/tahap-3.md),
 [laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
 [laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md),
-[laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md), dan
-[laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md).
+[laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md),
+[laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md), dan
+[laporan rilis 0.3.7](docs/laporan/rilis-0.3.7.md).
 
 ## Fitur
 
@@ -393,6 +394,37 @@ PERISAI_TIDUR_MB=0 perisai     # matikan peniduran
 
 Angka tersedia dan ambangnya juga tampil di `perisai --diagnostik`, baris
 `memori`.
+
+### Kalau jendela membeku
+
+"Freeze" yang membuat **seluruh** jendela berhenti menjawab klik berbeda dari
+halaman yang berhenti: yang pertama berarti main thread GTK/WebKit tertahan.
+Sejak 0.3.7 ada pengukur yang menanyakan main thread tiap detik
+(`src-tauri/src/macet.rs`); kalau jawabannya datang ≥ 2 detik kemudian, kejadian
+itu dicatat ke stderr dan ke berkas:
+
+```bash
+cat ~/.local/share/dev.perisai.app/logs/macet.log   # "selama 3204 ms"
+```
+
+Arti angkanya:
+
+- **Ada baris `macet:`** — main thread memang tertahan, dan lamanya menunjukkan
+  beratnya. Sejak 0.3.7 penulisan riwayat/sesi dan peniduran tab sudah pindah
+  keluar dari main thread; kalau masih muncul, baris itu yang menunjukkan
+  pekerjaan berikutnya yang perlu dipindah.
+- **Berkasnya kosong padahal jendela membeku** — main thread sehat, jadi
+  macetnya di compositor atau di proses WebKit, bukan di kode aplikasi. Coba
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1 perisai` (jalur SHM) atau
+  `GDK_BACKEND=x11 perisai`, lalu bandingkan.
+
+Pelemparan webview saat menidurkan tab kini dijadwalkan 1,5 detik setelah
+halaman tenang, bukan di tengah pembukaan tab: melepas webview mematikan proses
+WebKit dan itu dikerjakan di main thread. Untuk mematikan peniduran sama sekali:
+
+```bash
+PERISAI_TIDUR_MB=0 perisai
+```
 
 ### Panel melayang
 
