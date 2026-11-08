@@ -19,14 +19,15 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.3.7. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.3.8. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
 [laporan Tahap 3](docs/laporan/tahap-3.md),
 [laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
 [laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md),
 [laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md),
-[laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md), dan
-[laporan rilis 0.3.7](docs/laporan/rilis-0.3.7.md).
+[laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md),
+[laporan rilis 0.3.7](docs/laporan/rilis-0.3.7.md), dan
+[laporan rilis 0.3.8](docs/laporan/rilis-0.3.8.md).
 
 ## Fitur
 
@@ -407,20 +408,31 @@ itu dicatat ke stderr dan ke berkas:
 cat ~/.local/share/dev.perisai.app/logs/macet.log   # "selama 3204 ms"
 ```
 
+Sejak 0.3.8 baris itu juga menyebut pekerjaan yang sedang berjalan, misalnya
+`> 2000 ms (pasang-filter)` atau `> 2000 ms (tidurkan-tab)`.
+
 Arti angkanya:
 
 - **Ada baris `macet:`** — main thread memang tertahan, dan lamanya menunjukkan
   beratnya. Sejak 0.3.7 penulisan riwayat/sesi dan peniduran tab sudah pindah
-  keluar dari main thread; kalau masih muncul, baris itu yang menunjukkan
-  pekerjaan berikutnya yang perlu dipindah.
+  keluar dari main thread, dan sejak 0.3.8 kompilasi content blocker juga;
+  kalau masih muncul, keterangan dalam kurung menunjukkan pekerjaan berikutnya
+  yang perlu dipindah.
 - **Berkasnya kosong padahal jendela membeku** — main thread sehat, jadi
   macetnya di compositor atau di proses WebKit, bukan di kode aplikasi. Coba
   `WEBKIT_DISABLE_DMABUF_RENDERER=1 perisai` (jalur SHM) atau
   `GDK_BACKEND=x11 perisai`, lalu bandingkan.
 
-Pelemparan webview saat menidurkan tab kini dijadwalkan 1,5 detik setelah
-halaman tenang, bukan di tengah pembukaan tab: melepas webview mematikan proses
-WebKit dan itu dikerjakan di main thread. Untuk mematikan peniduran sama sekali:
+Kompilasi filter iklan (~14 MB, 131 ribu aturan) adalah penyebab freeze yang
+terukur: WebKit mengompilasinya di utas pemanggil meski API-nya bernama
+asinkron, dan dulu itu terjadi di main thread. Sejak 0.3.8 seluruh pekerjaan itu
+berjalan di thread pekerja; pemasangan ke webview tetap di main thread lewat
+callback-nya.
+
+Pelepasan webview saat menidurkan tab dijadwalkan 1,5 detik setelah halaman
+tenang, bukan di tengah pembukaan tab, dan hanya satu tab per putaran: melepas
+webview mematikan proses WebKit dan itu dikerjakan di main thread. Untuk
+mematikan peniduran sama sekali:
 
 ```bash
 PERISAI_TIDUR_MB=0 perisai

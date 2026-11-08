@@ -189,24 +189,35 @@ impl Adblock {
                 return;
             }
         }
+        // Semua tulis-baca berkas dilakukan di sini — thread adblock, bukan
+        // main thread. `filter.json` saja 14 MB; mengerjakannya di dalam
+        // closure main loop terukur menahan seluruh jendela ~950 ms di mesin
+        // uji (lebih dari dua detik di laptop lambat), dan itulah freeze yang
+        // terasa tepat saat browser dibuka.
         let _ = std::fs::write(self.folder.join("filter.json"), &json);
         let _ = std::fs::write(
             self.folder.join("filter.sig"),
             format!("{:016x}", self.sidik_konfigurasi()),
         );
+        let sumber = match crate::platform::siapkan_filter(&json, &self.folder) {
+            Ok(sumber) => sumber,
+            Err(pesan) => {
+                eprintln!("adblock: filter gagal disiapkan di disk: {pesan}");
+                return;
+            }
+        };
 
         let ini = self.clone();
-        let folder = self.folder.clone();
         let app_siap = app.clone();
 
-        // Objek WebKitGTK hanya boleh dibuat di thread utama GTK. Fungsi ini
-        // dipanggil dari thread pekerja, jadi pemasangan dikirim ke main loop.
+        // Objek WebKitGTK hanya boleh dibuat di thread utama GTK, jadi tinggal
+        // pemasangannya yang dikirim ke main loop.
         let hasil = app.run_on_main_thread(move || {
+            let _kerja = crate::macet::kerja("pasang-filter");
             let ini_siap = ini.clone();
             let app_cb = app_siap.clone();
             let hasil = crate::platform::pasang_filter(
-                json,
-                folder,
+                sumber,
                 Box::new(move || {
                     ini_siap.siap.store(true, Ordering::Release);
                     let jumlah = ini_siap.mesin().jumlah_aturan();

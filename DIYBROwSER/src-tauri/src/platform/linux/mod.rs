@@ -17,7 +17,7 @@ mod filter;
 mod pintasan;
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gtk::prelude::*;
 use tauri::{AppHandle, Manager, Rect, Webview};
@@ -242,13 +242,15 @@ unsafe extern "C" fn susun_ulang(
     }
 }
 
-/// Mengompilasi dan memasang content blocker; lihat `filter.rs`.
-pub fn pasang_filter(
-    json: String,
-    folder: PathBuf,
-    saat_siap: Box<dyn FnOnce()>,
-) -> Result<(), String> {
-    filter::pasang(json, &folder, saat_siap)
+/// Menyiapkan berkas filter di disk (I/O berat); jalankan di thread pekerja.
+/// Lihat `filter.rs`.
+pub fn siapkan_filter(json: &str, folder: &Path) -> Result<PathBuf, String> {
+    filter::siapkan(folder, json)
+}
+
+/// Memasang berkas filter yang sudah disiapkan; hanya boleh di main thread.
+pub fn pasang_filter(sumber: PathBuf, saat_siap: Box<dyn FnOnce() + Send>) -> Result<(), String> {
+    filter::pasang(&sumber, saat_siap)
 }
 
 pub fn filter_siap() -> bool {
@@ -347,7 +349,7 @@ pub fn pantau(webview: &Webview, app: AppHandle, id: String) -> Result<(), Strin
                 true
             });
 
-            // Status suara dipakai peniduran tab (`tabs::tidurkan_tab_lain`):
+            // Status suara dipakai peniduran tab (`tabs::tidurkan_satu_tab`):
             // tab yang memutar musik tidak boleh dihentikan.
             let app_suara = app.clone();
             let id_suara = id.clone();

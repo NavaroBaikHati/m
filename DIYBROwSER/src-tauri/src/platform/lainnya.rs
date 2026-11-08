@@ -5,7 +5,7 @@
 //! macOS perlu `WKContentRuleList` lewat `objc2`. Sampai itu ada, Perlindungan
 //! Perisai hanya menyala di Linux. Lihat `docs/rencana-fitur.md` §6.1.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Rect, Webview};
 
@@ -24,11 +24,12 @@ pub fn naikkan(_webview: &Webview) -> Result<(), String> {
 }
 
 /// Belum ada jalur content blocker di platform ini.
-pub fn pasang_filter(
-    _json: String,
-    _folder: PathBuf,
-    _saat_siap: Box<dyn FnOnce()>,
-) -> Result<(), String> {
+pub fn siapkan_filter(_json: &str, _folder: &Path) -> Result<PathBuf, String> {
+    Ok(PathBuf::new())
+}
+
+/// Belum ada jalur content blocker di platform ini.
+pub fn pasang_filter(_sumber: PathBuf, _saat_siap: Box<dyn FnOnce() + Send>) -> Result<(), String> {
     Ok(())
 }
 

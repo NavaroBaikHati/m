@@ -79,7 +79,7 @@ pub struct KeadaanTab {
     pub url: String,
     pub title: String,
     /// Webview tab ini dilepas untuk menghemat memori (lihat
-    /// [`TabManager::tidurkan_tab_lain`]); URL di atas tetap bisa dibuka lagi.
+    /// [`TabManager::tidurkan_satu_tab`]); URL di atas tetap bisa dibuka lagi.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub tidur: bool,
 }
@@ -227,6 +227,7 @@ impl TabManager {
 
     /// Membuat tab baru dan menjadikannya tab aktif.
     pub fn buka(&self, url: Url) -> Result<KeadaanTab, String> {
+        let _kerja = crate::macet::kerja("buka-tab");
         let id = format!("tab-{}", self.urutan.fetch_add(1, Ordering::SeqCst) + 1);
         // Halaman `file://` tidak boleh tercatat sebagai riwayat atau sesi.
         let lokal = url.scheme() == "file";
@@ -568,15 +569,24 @@ impl TabManager {
     /// melakukan apa pun.
     ///
     /// Ambang diatur `PERISAI_TIDUR_MB` (bawaan 300, `0` mematikan).
-    /// Mengembalikan jumlah tab yang ditidurkan.
     ///
-    /// Jangan dipanggil langsung di tengah pembukaan tab: melepas webview
-    /// berarti GTK menghancurkan widget dan WebKit menghentikan prosesnya, dan
-    /// itu dikerjakan di main thread. Gunakan [`Self::jadwalkan_tidur`].
-    pub fn tidurkan_tab_lain(&self) -> usize {
+    /// **Satu tab per pemanggilan, dengan sengaja.** `webview.close()`
+    /// menghancurkan widget GTK lalu menghentikan proses WebKit-nya, dan semua
+    /// itu di main thread. Dulu keempat tab dilepas dalam satu closure; di
+    /// mesin 1,7 GB itu terukur menahan jendela lebih dari dua detik. Sekarang
+    /// [`Self::jadwalkan_tidur`] memanggil ini sekali, membiarkan main thread
+    /// bernapas, lalu menjadwalkan putaran berikutnya kalau memori masih
+    /// sempit. Mengembalikan `true` kalau ada tab yang ditidurkan.
+    ///
+    /// Jangan dipanggil langsung di tengah pembukaan tab; gunakan
+    /// [`Self::jadwalkan_tidur`].
+    pub fn tidurkan_satu_tab(&self) -> bool {
         let Some(ambang) = crate::memori::ambang_tidur() else {
-            return 0;
+            return false;
         };
+        if crate::memori::tersedia_mb().unwrap_or(u64::MAX) >= ambang {
+            return false;
+        }
         let kandidat: Vec<String> = match self.isi.lock() {
             Ok(isi) => {
                 // Urutkan berdasarkan kapan terakhir dipakai: tab yang paling
@@ -602,14 +612,10 @@ impl TabManager {
                 }
                 hasil
             }
-            Err(_) => return 0,
+            Err(_) => return false,
         };
 
-        let mut ditidurkan = 0;
         for id in kandidat {
-            if crate::memori::tersedia_mb().unwrap_or(u64::MAX) >= ambang {
-                break;
-            }
             let Some(webview) = self.app.get_webview(&id) else {
                 continue;
             };
@@ -628,12 +634,16 @@ impl TabManager {
                     tab.tidur = true;
                 }
             }
-            ditidurkan += 1;
-        }
-        if ditidurkan > 0 {
             beri_tahu_daftar(&self.app);
+            return true;
         }
-        ditidurkan
+        false
+    }
+
+    /// Apakah memori masih di bawah ambang tidur setelah satu tab dilepas?
+    fn masih_sempit(&self) -> bool {
+        crate::memori::ambang_tidur()
+            .is_some_and(|ambang| crate::memori::tersedia_mb().unwrap_or(u64::MAX) < ambang)
     }
 
     /// Menjadwalkan peniduran tab setelah halaman baru tenang.
@@ -656,8 +666,15 @@ impl TabManager {
             let untuk_main = app.clone();
             let hasil = app.run_on_main_thread(move || {
                 if let Some(tabs) = untuk_main.try_state::<TabManager>() {
-                    tabs.tidurkan_tab_lain();
+                    let _kerja = crate::macet::kerja("tidurkan-tab");
                     tabs.tidur_berjalan.store(false, Ordering::SeqCst);
+                    // Masih sempit setelah satu tab dilepas: jadwalkan putaran
+                    // berikutnya agar main thread sempat melayani klik dulu.
+                    // Kalau tidak ada tab yang bisa ditidurkan lagi, berhenti —
+                    // jangan menjadwalkan ulang selamanya.
+                    if tabs.tidurkan_satu_tab() && tabs.masih_sempit() {
+                        tabs.jadwalkan_tidur();
+                    }
                 }
             });
             if hasil.is_err() {

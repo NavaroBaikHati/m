@@ -9,6 +9,7 @@
 
 use std::io::Write;
 use std::sync::mpsc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
@@ -17,6 +18,49 @@ use tauri::{AppHandle, Manager};
 pub const AMBANG: Duration = Duration::from_millis(2000);
 /// Jedanya antar pertanyaan; pertanyaan sendiri hanya satu closure kecil.
 const JEDA: Duration = Duration::from_millis(1000);
+
+/// Nama pekerjaan main thread yang sedang berjalan.
+///
+/// Tanpa ini laporan macet hanya berkata "main thread tertahan", dan pemilik
+/// laporan tetap harus menebak pekerjaan mana. Dengan penanda, barisnya
+/// langsung menyebut tersangka — `(pasang-filter)`, `(tidurkan-tab)`, dan
+/// seterusnya. Nilainya harus pendek dan statis supaya penulisan penanda
+/// sendiri tidak menambah pekerjaan.
+static KERJA: Mutex<&'static str> = Mutex::new("");
+
+/// Menandai pekerjaan main thread yang sedang berjalan. Penandanya dilepas saat
+/// nilai kembaliannya dijatuhkan (termasuk saat fungsi keluar karena `?`), dan
+/// penanda sebelumnya dipulihkan supaya pekerjaan bersarang tidak saling
+/// menghapus.
+#[must_use]
+pub struct Penanda {
+    sebelumnya: &'static str,
+}
+
+impl Drop for Penanda {
+    fn drop(&mut self) {
+        pasang_kerja(self.sebelumnya);
+    }
+}
+
+/// Menandai awal pekerjaan berat di main thread.
+pub fn kerja(nama: &'static str) -> Penanda {
+    let sebelumnya = kerja_sekarang();
+    pasang_kerja(nama);
+    Penanda { sebelumnya }
+}
+
+fn pasang_kerja(nama: &'static str) {
+    if let Ok(mut slot) = KERJA.try_lock() {
+        *slot = nama;
+    }
+}
+
+/// Nama pekerjaan yang sedang berjalan, atau string kosong kalau tidak ada.
+/// `try_lock` dipakai supaya utas pengukur tidak pernah ikut menunggu.
+fn kerja_sekarang() -> &'static str {
+    KERJA.try_lock().map(|slot| *slot).unwrap_or("")
+}
 
 pub fn mulai(app: &AppHandle) {
     let app = app.clone();
@@ -59,7 +103,13 @@ fn tertahan(durasi: Duration) -> bool {
 fn catat(app: &AppHandle, durasi: Duration, lebih_lama: bool) {
     let ms = durasi.as_millis();
     let awalan = if lebih_lama { ">" } else { "selama" };
-    eprintln!("macet: main thread tidak menjawab {awalan} {ms} ms");
+    let kerja = kerja_sekarang();
+    let rincian = if kerja.is_empty() {
+        String::new()
+    } else {
+        format!(" ({kerja})")
+    };
+    eprintln!("macet: main thread tidak menjawab {awalan} {ms} ms{rincian}");
     let Some(folder) = folder_log(app) else {
         return;
     };
@@ -69,7 +119,7 @@ fn catat(app: &AppHandle, durasi: Duration, lebih_lama: bool) {
         .append(true)
         .open(folder.join("macet.log"))
     {
-        let _ = writeln!(berkas, "{awalan} {ms} ms");
+        let _ = writeln!(berkas, "{awalan} {ms} ms{rincian}");
     }
 }
 
@@ -87,8 +137,36 @@ fn folder_log(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{tertahan, AMBANG};
+    use super::{kerja, kerja_sekarang, tertahan, Penanda, AMBANG};
     use std::time::Duration;
+
+    /// Semua pemeriksaan penanda di satu tes: penandanya satu variabel global,
+    /// jadi tes yang berjalan paralel bisa saling menimpa.
+    #[test]
+    fn penanda_kerja_dipulihkan_saat_guard_jatuh() {
+        {
+            let _kerja = kerja("pasang-filter");
+            assert_eq!(kerja_sekarang(), "pasang-filter");
+        }
+        assert_eq!(kerja_sekarang(), "");
+
+        // Pekerjaan bersarang (misalnya pemasangan filter saat tab dibuka)
+        // harus kembali ke penanda luar, bukan mengosongkannya.
+        {
+            let _luar = kerja("buka-tab");
+            {
+                let _dalam = kerja("pasang-filter");
+                assert_eq!(kerja_sekarang(), "pasang-filter");
+            }
+            assert_eq!(kerja_sekarang(), "buka-tab");
+        }
+        assert_eq!(kerja_sekarang(), "");
+
+        {
+            let _penanda: Penanda = kerja("");
+            assert_eq!(kerja_sekarang(), "");
+        }
+    }
 
     #[test]
     fn jeda_pendek_bukan_macet() {

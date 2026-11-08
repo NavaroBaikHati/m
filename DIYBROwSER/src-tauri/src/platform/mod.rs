@@ -12,7 +12,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
     atur_batas, filter_siap, lepas_filter, naikkan, pantau, pasang_filter, pasang_filter_ke,
-    pasang_pintasan, pasang_skrip_latar, siapkan_wadah,
+    pasang_pintasan, pasang_skrip_latar, siapkan_filter, siapkan_wadah,
 };
 
 #[cfg(not(target_os = "linux"))]
@@ -20,5 +20,5 @@ mod lainnya;
 #[cfg(not(target_os = "linux"))]
 pub use lainnya::{
     atur_batas, filter_siap, lepas_filter, naikkan, pantau, pasang_filter, pasang_filter_ke,
-    pasang_pintasan, pasang_skrip_latar, siapkan_wadah,
+    pasang_pintasan, pasang_skrip_latar, siapkan_filter, siapkan_wadah,
 };
