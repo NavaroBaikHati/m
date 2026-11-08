@@ -9,7 +9,7 @@
 
 use std::io::Write;
 use std::sync::mpsc;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
@@ -27,6 +27,10 @@ const JEDA: Duration = Duration::from_millis(1000);
 /// seterusnya. Nilainya harus pendek dan statis supaya penulisan penanda
 /// sendiri tidak menambah pekerjaan.
 static KERJA: Mutex<&'static str> = Mutex::new("");
+
+/// Kapan aplikasi mulai berjalan; dipakai supaya laporan bisa dicocokkan
+/// dengan urutan kejadian di terminal.
+static MULAI: OnceLock<Instant> = OnceLock::new();
 
 /// Menandai pekerjaan main thread yang sedang berjalan. Penandanya dilepas saat
 /// nilai kembaliannya dijatuhkan (termasuk saat fungsi keluar karena `?`), dan
@@ -63,6 +67,7 @@ fn kerja_sekarang() -> &'static str {
 }
 
 pub fn mulai(app: &AppHandle) {
+    let _ = MULAI.set(Instant::now());
     let app = app.clone();
     let (tx, rx) = mpsc::channel::<Instant>();
     thread::spawn(move || loop {
@@ -100,15 +105,43 @@ fn tertahan(durasi: Duration) -> bool {
 
 /// Ditulis ke stderr (terlihat kalau dijalankan dari terminal) dan ke berkas
 /// supaya tetap ada saat dijalankan dari peluncur aplikasi.
+/// Keterangan tambahan di belakang lamanya macet: pekerjaan yang sedang
+/// berjalan, lalu keadaan memori saat itu.
+///
+/// Memori ikut dicatat karena "main thread tertahan" bisa berarti dua hal yang
+/// sangat berbeda: ada pekerjaan berat di kode kita, atau seluruh sistem sedang
+/// menukar halaman ke disk sehingga main thread menunggu page fault. Kolom swap
+/// memisahkan keduanya tanpa perlu menebak.
+fn rincian(kerja: &str, tersedia_mb: Option<u64>, swap_mb: Option<u64>, detik: u64) -> String {
+    let mut hasil = String::new();
+    if !kerja.is_empty() {
+        hasil.push_str(&format!(" ({kerja})"));
+    }
+    let mut konteks: Vec<String> = Vec::new();
+    if let Some(tersedia) = tersedia_mb {
+        konteks.push(format!("tersedia {tersedia} MB"));
+    }
+    if let Some(swap) = swap_mb {
+        konteks.push(format!("swap {swap} MB"));
+    }
+    konteks.push(format!("t={detik} s"));
+    hasil.push_str(&format!(" [{}]", konteks.join(", ")));
+    hasil
+}
+
 fn catat(app: &AppHandle, durasi: Duration, lebih_lama: bool) {
     let ms = durasi.as_millis();
     let awalan = if lebih_lama { ">" } else { "selama" };
-    let kerja = kerja_sekarang();
-    let rincian = if kerja.is_empty() {
-        String::new()
-    } else {
-        format!(" ({kerja})")
-    };
+    let detik = MULAI
+        .get()
+        .map(|mulai| mulai.elapsed().as_secs())
+        .unwrap_or(0);
+    let rincian = rincian(
+        kerja_sekarang(),
+        crate::memori::tersedia_mb(),
+        crate::memori::swap_terpakai_mb(),
+        detik,
+    );
     eprintln!("macet: main thread tidak menjawab {awalan} {ms} ms{rincian}");
     let Some(folder) = folder_log(app) else {
         return;
@@ -137,7 +170,7 @@ fn folder_log(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{kerja, kerja_sekarang, tertahan, Penanda, AMBANG};
+    use super::{kerja, kerja_sekarang, rincian, tertahan, Penanda, AMBANG};
     use std::time::Duration;
 
     /// Semua pemeriksaan penanda di satu tes: penandanya satu variabel global,
@@ -166,6 +199,17 @@ mod tests {
             let _penanda: Penanda = kerja("");
             assert_eq!(kerja_sekarang(), "");
         }
+    }
+
+    #[test]
+    fn rincian_menyebut_pekerjaan_dan_memori() {
+        assert_eq!(
+            rincian("pilih-tab", Some(180), Some(512), 94),
+            " (pilih-tab) [tersedia 180 MB, swap 512 MB, t=94 s]"
+        );
+        // Tanpa label kerja (misalnya macet di dalam GTK) dan tanpa /proc:
+        // keterangannya tetap ada, hanya lebih pendek.
+        assert_eq!(rincian("", None, None, 7), " [t=7 s]");
     }
 
     #[test]

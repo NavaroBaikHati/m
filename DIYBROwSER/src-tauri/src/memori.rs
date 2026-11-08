@@ -14,10 +14,10 @@
 /// Pada mesin 8 GB angka ini praktis tidak pernah tersentuh.
 pub const AMBANG_BAWAAN_MB: u64 = 300;
 
-/// Isi `/proc/meminfo` yang kita pakai.
-pub fn baca_meminfo(isi: &str) -> Option<u64> {
+/// Satu nilai dari `/proc/meminfo`, dalam MB.
+fn kb(isi: &str, kunci: &str) -> Option<u64> {
     for baris in isi.lines() {
-        let Some(sisa) = baris.strip_prefix("MemAvailable:") else {
+        let Some(sisa) = baris.strip_prefix(kunci) else {
             continue;
         };
         // Formatnya "MemAvailable:   1234567 kB".
@@ -28,10 +28,31 @@ pub fn baca_meminfo(isi: &str) -> Option<u64> {
     None
 }
 
+/// Isi `/proc/meminfo` yang kita pakai.
+pub fn baca_meminfo(isi: &str) -> Option<u64> {
+    kb(isi, "MemAvailable:")
+}
+
+/// Swap yang sedang terpakai, dalam MB.
+///
+/// Angka ini yang membedakan "main thread mengerjakan sesuatu" dari "seluruh
+/// sistem menukar ke disk": begitu swap dipakai, halaman yang dibutuhkan main
+/// thread harus dibaca ulang dari disk lebih dulu.
+pub fn baca_swap_mb(isi: &str) -> Option<u64> {
+    let total = kb(isi, "SwapTotal:")?;
+    let bebas = kb(isi, "SwapFree:")?;
+    Some(total.saturating_sub(bebas))
+}
+
 /// Memori yang tersedia sekarang, dalam MB. `None` kalau tidak bisa dibaca
 /// (bukan Linux, atau `/proc` tidak tersedia).
 pub fn tersedia_mb() -> Option<u64> {
     baca_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)
+}
+
+/// Swap yang terpakai sekarang, dalam MB. `None` kalau tidak bisa dibaca.
+pub fn swap_terpakai_mb() -> Option<u64> {
+    baca_swap_mb(&std::fs::read_to_string("/proc/meminfo").ok()?)
 }
 
 /// Ambang tidur dari `PERISAI_TIDUR_MB`; `None` berarti fitur dimatikan
@@ -50,13 +71,26 @@ pub fn ambang_tidur() -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{baca_meminfo, AMBANG_BAWAAN_MB};
+    use super::{baca_meminfo, baca_swap_mb, AMBANG_BAWAAN_MB};
+
+    const CONTOH: &str = "MemTotal:        1800000 kB\nMemFree:          100000 kB\n\
+MemAvailable:     614400 kB\nBuffers:           10000 kB\n\
+SwapTotal:       1048576 kB\nSwapFree:         262144 kB\n";
 
     #[test]
     fn meminfo_memakai_memavailable_dalam_mb() {
-        let isi = "MemTotal:        1800000 kB\nMemFree:          100000 kB\n\
-MemAvailable:     614400 kB\nBuffers:           10000 kB\n";
-        assert_eq!(baca_meminfo(isi), Some(600));
+        assert_eq!(baca_meminfo(CONTOH), Some(600));
+    }
+
+    #[test]
+    fn swap_terpakai_adalah_selisih_total_dan_bebas() {
+        assert_eq!(baca_swap_mb(CONTOH), Some(768));
+        // Tanpa swap sama sekali (misalnya swapfile tidak aktif).
+        assert_eq!(
+            baca_swap_mb("SwapTotal:             0 kB\nSwapFree:              0 kB\n"),
+            Some(0)
+        );
+        assert_eq!(baca_swap_mb("MemTotal: 100 kB\n"), None);
     }
 
     #[test]

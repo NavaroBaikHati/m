@@ -303,6 +303,9 @@ impl TabManager {
     /// keduanya sama-sama butuh WebKit, pemantau layar penuh, dan content
     /// blocker yang terpasang sebelum halaman pertama dimuat.
     fn bangun_webview(&self, id: &str, url: &Url) -> Result<Webview, String> {
+        // Tab yang ditidurkan dibangun ulang di sini, lengkap dengan proses
+        // WebKit baru — bagian paling berat dari berpindah tab.
+        let _kerja = crate::macet::kerja("bangun-webview");
         let id = id.to_string();
         let url = url.clone();
 
@@ -490,6 +493,7 @@ impl TabManager {
 
     /// Mengaktifkan tab `id` dan menampilkannya kembali.
     pub fn pilih(&self, id: &str) -> Result<(), String> {
+        let _kerja = crate::macet::kerja("pilih-tab");
         // Berpindah tab saat video layar penuh harus mengembalikan chrome,
         // kalau tidak toolbar tetap tersembunyi di tab berikutnya.
         if self.layar_penuh.lock().map(|slot| *slot).unwrap_or(false) {
@@ -745,6 +749,10 @@ impl TabManager {
         };
 
         if let Some(webview) = self.app.get_webview(id) {
+            // Menutup webview menghancurkan widget GTK lalu menghentikan proses
+            // WebKit-nya di main thread — di mesin kecil ini bisa lebih dari
+            // dua detik kalau halaman sedang memutar media.
+            let _kerja = crate::macet::kerja("tutup-tab");
             webview.close().map_err(|e| e.to_string())?;
         }
         if let Ok(mut stack) = self.ditutup.lock() {

@@ -19,15 +19,16 @@ PRD lengkap ada di [PRD.md](PRD.md).
 | 4     | Mode privat, find in page, spaces, pin tab, command palette       | Belum     |
 | 5     | Penghitung iklan per request, jalur Windows/macOS                 | Belum     |
 
-Versi 0.3.8. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
+Versi 0.3.9. Catatan verifikasi tiap tahap ada di `docs/laporan/`, termasuk
 [laporan rilis 0.1.0](docs/laporan/rilis-0.1.0.md),
 [laporan Tahap 3](docs/laporan/tahap-3.md),
 [laporan rilis 0.2.0](docs/laporan/rilis-0.2.0.md), dan
 [laporan rilis 0.2.1](docs/laporan/rilis-0.2.1.md),
 [laporan rilis 0.2.2](docs/laporan/rilis-0.2.2.md),
 [laporan rilis 0.3.6](docs/laporan/rilis-0.3.6.md),
-[laporan rilis 0.3.7](docs/laporan/rilis-0.3.7.md), dan
-[laporan rilis 0.3.8](docs/laporan/rilis-0.3.8.md).
+[laporan rilis 0.3.7](docs/laporan/rilis-0.3.7.md),
+[laporan rilis 0.3.8](docs/laporan/rilis-0.3.8.md), dan
+[laporan rilis 0.3.9](docs/laporan/rilis-0.3.9.md).
 
 ## Fitur
 
@@ -408,8 +409,17 @@ itu dicatat ke stderr dan ke berkas:
 cat ~/.local/share/dev.perisai.app/logs/macet.log   # "selama 3204 ms"
 ```
 
-Sejak 0.3.8 baris itu juga menyebut pekerjaan yang sedang berjalan, misalnya
-`> 2000 ms (pasang-filter)` atau `> 2000 ms (tidurkan-tab)`.
+Sejak 0.3.8 baris itu menyebut pekerjaan yang sedang berjalan, dan sejak 0.3.9
+keadaan memori serta waktu sejak aplikasi dibuka, misalnya:
+
+```
+> 2000 ms (bangun-webview) [tersedia 210 MB, swap 640 MB, t=182 s]
+```
+
+Label yang mungkin muncul: `pasang-filter`, `buka-tab`, `bangun-webview`,
+`pilih-tab`, `tutup-tab`, `tidurkan-tab`. Kolom `swap` yang besar (ratusan MB)
+berarti macetnya karena mesin menukar ke disk, bukan karena satu pekerjaan
+di kode — di mesin 1,7 GB letaknya di jumlah tab, bukan di fungsi tertentu.
 
 Arti angkanya:
 

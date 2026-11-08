@@ -27,7 +27,7 @@ dependencies = [
 
 [[package]]
 name = "adblock-core"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "adblock",
  "serde_json",
@@ -2264,7 +2264,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perisai"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "adblock-core",
  "gtk",
@@ -3098,7 +3098,7 @@ checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
 
 [[package]]
 name = "storage"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "rusqlite",
  "serde",
